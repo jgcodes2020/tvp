@@ -1,101 +1,149 @@
 #include "term.hpp"
+#include <fmt/compile.h>
 #include <fmt/core.h>
+#include <opencv2/core/hal/interface.h>
+#include <algorithm>
 #include <cstdio>
+#include <iterator>
+#include <memory>
+#include <utility>
+#include "fixed_string.hpp"
 #include <opencv2/core/mat.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 
-template <uint8_t D>
-uint8_t select(uint8_t x) {
-  uint8_t q = x / D, r = x % D;
-  return q + (r >= (D/2));
-}
-
-template <uint8_t D>
-uint8_t round(uint8_t x) {
-  uint8_t q = x / D, r = x % D;
-  return (q + (r >= (D/2))) * D;
-}
-
-uint8_t extract(cv::Mat& img, size_t r, size_t c) {
-  return (r >= img.rows || c >= img.cols)? 0 : img.at<uint8_t>(r, c);
-}
-
-namespace term {
-  
-  void sixelize_bw(cv::InputArray src) {
-    cv::Mat img;
-    cv::cvtColor(src, img, cv::COLOR_BGR2GRAY);
-
-    cv::threshold(img, img, 128, 255, cv::THRESH_BINARY);
-
-    fmt::print("\ePq#0;2;0;0;0#1;2;100;100;100;");
-    std::string buffer(img.cols, '\0');
-    for (size_t i = 0; i < img.rows; i += 6) {
-      // print WHITE
-      for (size_t j = 0; j < img.cols; ++j) {
-        uint8_t sixel_bits = (uchar(img.at<uchar>(i + 0, j) != 0) << 0) |
-          (uchar(img.at<uchar>(i + 1, j) != 0) << 1) |
-          (uchar(img.at<uchar>(i + 2, j) != 0) << 2) |
-          (uchar(img.at<uchar>(i + 3, j) != 0) << 3) |
-          (uchar(img.at<uchar>(i + 4, j) != 0) << 4) |
-          (uchar(img.at<uchar>(i + 5, j) != 0) << 5);
-
-        buffer[j] = sixel_bits + 0x3F;
-      }
-      fmt::print("#1{}$", buffer);
-      // print BLACK
-      for (size_t j = 0; j < img.cols; ++j) {
-        uint8_t sixel_bits = (uchar(img.at<uchar>(i + 0, j) == 0) << 0) |
-          (uchar(img.at<uchar>(i + 1, j) == 0) << 1) |
-          (uchar(img.at<uchar>(i + 2, j) == 0) << 2) |
-          (uchar(img.at<uchar>(i + 3, j) == 0) << 3) |
-          (uchar(img.at<uchar>(i + 4, j) == 0) << 4) |
-          (uchar(img.at<uchar>(i + 5, j) == 0) << 5);
-
-        buffer[j] = sixel_bits + 0x3F;
-      }
-      fmt::print("#0{}-", buffer);
-    }
-    fmt::print("\e\\");
+namespace {
+  template <uint8_t D>
+  uint8_t select(uint8_t x) {
+    uint8_t q = x / D, r = x % D;
+    return q + (r >= (D / 2));
   }
 
-  void sixelize_gs6(cv::InputArray src) {
-    cv::Mat img;
-    cv::cvtColor(src, img, cv::COLOR_BGR2GRAY);
-    img.forEach<uint8_t>([](uint8_t& x, const int pos[]) {
-      x = select<51>(x);
-    });
-    
-    // clang-format off
-    // Palette setup
-    fmt::print(
-      "\ePq"
-      "#0;2;0;0;0"
-      "#1;2;20;20;20"
-      "#2;2;40;40;40"
-      "#3;2;60;60;60"
-      "#4;2;80;80;80"
-      "#5;2;100;100;100"
-    );
-    // clang-format on
-    std::string buffer(img.cols, '\0');
-    for (size_t r = 0; r < img.rows; r += 6) {
-      for (size_t pc = 0; pc <= 5; ++pc) {
-        fmt::print("#{}", pc);
-        
-        for (size_t c = 0; c < img.cols; ++c) {
-          uint8_t sixel_bits = 
-            (uchar(extract(img, r + 0, c) == pc) << 0) |
+  template <uint8_t D>
+  uint8_t round(uint8_t x) {
+    uint8_t q = x / D, r = x % D;
+    return (q + (r >= (D / 2))) * D;
+  }
+
+  inline uint8_t extract(cv::Mat& img, size_t r, size_t c) {
+    return (r >= img.rows || c >= img.cols) ? 0 : img.at<uint8_t>(r, c);
+  }
+
+  inline char encode(cv::Mat& img, uint8_t pc, size_t r, size_t c) {
+    return ((uchar(extract(img, r + 0, c) == pc) << 0) |
             (uchar(extract(img, r + 1, c) == pc) << 1) |
             (uchar(extract(img, r + 2, c) == pc) << 2) |
             (uchar(extract(img, r + 3, c) == pc) << 3) |
             (uchar(extract(img, r + 4, c) == pc) << 4) |
-            (uchar(extract(img, r + 5, c) == pc) << 5);
-          
-          buffer[c] = sixel_bits + 0x3F;
+            (uchar(extract(img, r + 5, c) == pc) << 5)) +
+      0x3F;
+  }
+
+  constexpr size_t digit_cnt(size_t n) {
+    size_t c = 0;
+    do {
+      n /= 10, c++;
+    } while (n > 0);
+    return c;
+  }
+
+  constexpr size_t palette_string_len(size_t n) {
+    size_t total = 0;
+    for (size_t i = 0; i <= n; i++) {
+      // format for palette entry:
+      // #{register #};2;{scale};{scale};{scale}
+      total += (digit_cnt(i) + digit_cnt(100 * i / n) * 3 + 6);
+    }
+    return total;
+  }
+
+  template <size_t n>
+  constexpr mtap::fixed_string<palette_string_len(n)> make_palette_string() {
+    constexpr size_t len = palette_string_len(n);
+    mtap::fixed_string<len> str;
+    size_t ptr = 0;
+    for (size_t i = 0; i <= n; i++) {
+      str[ptr++]   = '#';
+      size_t begin = ptr;
+      size_t k     = i;
+      do {
+        str[ptr++] = (k % 10) + '0';
+        k /= 10;
+      } while (k > 0);
+      std::reverse(&str[begin], &str[ptr]);
+      str[ptr++] = ';';
+      str[ptr++] = '2';
+      str[ptr++] = ';';
+      begin      = ptr;
+      k          = (100 * i / n);
+      do {
+        str[ptr++] = (k % 10) + '0';
+        k /= 10;
+      } while (k > 0);
+      std::reverse(&str[begin], &str[ptr]);
+      str[ptr++] = ';';
+      std::copy(&str[begin], &str[ptr], &str[ptr]);
+      size_t len = ptr - begin;
+      begin += len;
+      ptr += len;
+      std::copy(&str[begin], &str[ptr - 1], &str[ptr]);
+      ptr += len - 1;
+    }
+    str[len] = '\0';
+    return str;
+  }
+}  // namespace
+
+namespace term {
+
+  void sixelize(cv::InputArray src) {
+    using namespace std::literals;
+
+    constexpr uint8_t pcols              = 17;
+    constexpr mtap::fixed_string palette = make_palette_string<pcols>();
+
+    cv::Mat img;
+    cv::cvtColor(src, img, cv::COLOR_BGR2GRAY);
+    img.forEach<uint8_t>(
+      [](uint8_t& x, const int pos[]) { x = select<255 / pcols>(x); });
+
+    // clang-format off
+    fmt::print(FMT_COMPILE("\ePq{}"), std::string_view(palette));
+    // clang-format on
+    std::string buf;
+    buf.reserve(img.cols);
+    size_t len;
+
+    for (size_t r = 0; r < img.rows; r += 6) {
+      for (size_t pc = 0; pc <= pcols; ++pc) {
+        char prev    = '\0';
+        size_t count = 0;
+        buf.clear();
+        for (size_t c = 0; c < img.cols; ++c) {
+          char curr = encode(img, pc, r, c);
+          if (curr != prev) {
+            if (count > 0) {
+              if (count > 3) {
+                fmt::format_to(std::back_inserter(buf), "!{}{}", count, prev);
+              }
+              else {
+                buf.append(std::string(count, prev));
+              }
+            }
+            count = 0;
+            prev  = curr;
+          }
+          ++count;
         }
-        fmt::print("{}{}", buffer, (pc == 5)? '-' : '$');
+        if (count > 0) {
+          if (count > 3) {
+            fmt::format_to(std::back_inserter(buf), "!{}{}", count, prev);
+          }
+          else {
+            buf.append(std::string(count, prev));
+          }
+        }
+        fmt::print("#{}{}{}", pc, buf, (pc == pcols) ? '-' : '$');
       }
     }
     fmt::print("\e\\");

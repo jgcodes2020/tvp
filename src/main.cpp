@@ -52,7 +52,7 @@ int main(int argc, char* argv[]) {
   auto time = chr::high_resolution_clock::now();
   while ((void(video >> frame), !frame.empty()) && stop_flag) {
     resize_to_term(frame);
-    term::sixelize_gs6(frame);
+    term::sixelize(frame);
     thread::sleep_until(time + mspf);
     time = chr::high_resolution_clock::now();
   }

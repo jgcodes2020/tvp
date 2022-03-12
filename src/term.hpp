@@ -18,10 +18,10 @@ namespace term {
     #endif
   }
   inline void set_alt_buffer(bool set) {
-    fmt::print(set? "\e[?1049h" : "\e[?1049l");
+    fmt::print("{}", set? "\e[?1049h" : "\e[?1049l");
   }
   inline void set_decsdm(bool set) {
-    fmt::print(set? "\e[?80h" : "\e[?80l");
+    fmt::print("{}", set? "\e[?80h" : "\e[?80l");
   }
   inline void cls() {
     fmt::print("\e[2J\e[3J\e[H");
@@ -29,7 +29,6 @@ namespace term {
   
   void show(cv::InputArray arr);
   
-  void sixelize_bw(cv::InputArray arr);
-  void sixelize_gs6(cv::InputArray arr);
+  void sixelize(cv::InputArray arr);
 }
 #endif

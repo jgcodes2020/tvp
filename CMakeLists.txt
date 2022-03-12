@@ -79,8 +79,8 @@ add_executable(tvp
   "src/term.cpp"
 )
 set_target_properties(tvp PROPERTIES
-  CXX_STANDARD 17
+  CXX_STANDARD 20
   CXX_STANDARD_REQUIRED yes
 )
-target_compile_features(tvp PUBLIC cxx_std_17)
+target_compile_features(tvp PUBLIC cxx_std_20)
 target_link_libraries(tvp PUBLIC opencv::opencv base64::base64 fmt::fmt)
