@@ -6,6 +6,7 @@
 #include <sys/ioctl.h>
 #include <string_view>
 #include <fmt/core.h>
+#include <termios.h>
 
 namespace term {
   inline cv::Size sixel_size() {
@@ -17,6 +18,7 @@ namespace term {
     return cv::Size {80 * 10, 42 * 20};
     #endif
   }
+  // Terminal control
   inline void set_alt_buffer(bool set) {
     fmt::print("{}", set? "\e[?1049h" : "\e[?1049l");
   }
@@ -26,6 +28,7 @@ namespace term {
   inline void cls() {
     fmt::print("\e[2J\e[3J\e[H");
   }
+  
   
   void show(cv::InputArray arr);
   
