@@ -29,6 +29,7 @@ namespace term {
   
   void show(cv::InputArray arr);
   
-  void sixelize(cv::InputArray arr);
+  void encode_sixel(cv::InputArray arr);
+  void encode_iterm2(cv::InputArray arr);
 }
 #endif

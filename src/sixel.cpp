@@ -96,7 +96,7 @@ namespace {
 
 namespace term {
 
-  void sixelize(cv::InputArray src) {
+  void encode_sixel(cv::InputArray src) {
     using namespace std::literals;
 
     constexpr uint8_t pcols              = 17;

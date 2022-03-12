@@ -76,7 +76,8 @@ endforeach()
 add_executable(tvp
   "src/main.cpp"
   "src/term.hpp"
-  "src/term.cpp"
+  "src/sixel.cpp"
+  "src/iterm2.cpp"
 )
 set_target_properties(tvp PROPERTIES
   CXX_STANDARD 20
