@@ -7,15 +7,20 @@
 #include <string_view>
 #include <fmt/core.h>
 #include <termios.h>
+#include <chrono>
 
 namespace term {
+  extern std::chrono::high_resolution_clock::duration process_time;  
+  extern std::chrono::high_resolution_clock::duration encode_time;  
+  
+  
   inline cv::Size sixel_size() {
-    #if 1
+    #if 0
     winsize size;
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &size);
-    return cv::Size {size.ws_col * 10, size.ws_row * 20};
+    return cv::Size {int(size.ws_col) * 10, int(size.ws_row) * 20};
     #else
-    return cv::Size {80 * 10, 42 * 20};
+    return cv::Size {190 * 10, 50 * 20};
     #endif
   }
   // Terminal control
@@ -29,10 +34,6 @@ namespace term {
     fmt::print("\e[2J\e[3J\e[H");
   }
   
-  
-  void show(cv::InputArray arr);
-  
   void encode_sixel(cv::InputArray arr);
-  void encode_iterm2(cv::InputArray arr);
 }
 #endif

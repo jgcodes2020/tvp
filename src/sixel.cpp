@@ -1,18 +1,25 @@
+#include <emmintrin.h>
 #include <fmt/compile.h>
 #include <fmt/core.h>
-#include <opencv2/core/hal/interface.h>
+
+#include <opencv2/opencv.hpp>
+
 #include <algorithm>
 #include <bit>
 #include <cstdio>
+#include <chrono>
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
+
+#include <nmmintrin.h>
+#include <pmmintrin.h>
+
 #include "fixed_string.hpp"
 #include "term.hpp"
-#include <opencv2/core/mat.hpp>
-#include <opencv2/highgui.hpp>
-#include <opencv2/imgproc.hpp>
 
 namespace {
   template <uint8_t D>
@@ -27,19 +34,7 @@ namespace {
     uint8_t q = x / D, r = x % D;
     return (q + (r >= (D / 2))) * D;
   }
-  inline uint8_t& extract(cv::Mat& img, size_t r, size_t c) {
-    static uint8_t garbage;
-    return (r >= img.rows || c >= img.cols) ? garbage : img.at<uint8_t>(r, c);
-  }
-  inline char encode(cv::Mat& img, uint8_t pc, size_t r, size_t c) {
-    return ((uchar(extract(img, r + 0, c) == pc) << 0) |
-            (uchar(extract(img, r + 1, c) == pc) << 1) |
-            (uchar(extract(img, r + 2, c) == pc) << 2) |
-            (uchar(extract(img, r + 3, c) == pc) << 3) |
-            (uchar(extract(img, r + 4, c) == pc) << 4) |
-            (uchar(extract(img, r + 5, c) == pc) << 5)) +
-      0x3F;
-  }
+
   // Saturated ADD Unsigned with Signed
   uint8_t saddus(uint8_t a, int8_t b) {
     if (b < 0) {
@@ -104,9 +99,90 @@ namespace {
     str[len] = '\0';
     return str;
   }
+  
+  // Takes 6 row pointers, an output buffer, a palette colour and a width.
+  // Converts a cv::Mat row into sixel.
+  void encode_scanline(
+    std::string& buffer, const std::array<uint8_t*, 6>& rps, uint8_t pc, size_t width, bool rescan) {
+
+    size_t i;
+    
+    // either 0x0000 or 0xFFFF.
+    uint16_t rle_state = 0;
+    
+    const __m128i spread_pc = _mm_set1_epi8(pc);
+    // SIMD encoder
+    for (i = 0; i + 15 < width; i += 16) {
+      // load 16 bytes from each row
+      __m128i mask_r0 = rps[0]
+        ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[0] + i))
+        : _mm_setzero_si128();
+      __m128i mask_r1 = rps[1]
+        ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[1] + i))
+        : _mm_setzero_si128();
+      __m128i mask_r2 = rps[2]
+        ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[2] + i))
+        : _mm_setzero_si128();
+      __m128i mask_r3 = rps[3]
+        ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[3] + i))
+        : _mm_setzero_si128();
+      __m128i mask_r4 = rps[4]
+        ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[4] + i))
+        : _mm_setzero_si128();
+      __m128i mask_r5 = rps[5]
+        ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[5] + i))
+        : _mm_setzero_si128();
+      // create bitmask
+      mask_r0 = _mm_cmpeq_epi8(mask_r0, spread_pc);
+      mask_r1 = _mm_cmpeq_epi8(mask_r1, spread_pc);
+      mask_r2 = _mm_cmpeq_epi8(mask_r2, spread_pc);
+      mask_r3 = _mm_cmpeq_epi8(mask_r3, spread_pc);
+      mask_r4 = _mm_cmpeq_epi8(mask_r4, spread_pc);
+      mask_r5 = _mm_cmpeq_epi8(mask_r5, spread_pc);
+      // mask each row
+      mask_r0 = _mm_and_si128(mask_r0, _mm_set1_epi8(0x01));
+      mask_r1 = _mm_and_si128(mask_r1, _mm_set1_epi8(0x02));
+      mask_r2 = _mm_and_si128(mask_r2, _mm_set1_epi8(0x04));
+      mask_r3 = _mm_and_si128(mask_r3, _mm_set1_epi8(0x08));
+      mask_r4 = _mm_and_si128(mask_r4, _mm_set1_epi8(0x10));
+      mask_r5 = _mm_and_si128(mask_r5, _mm_set1_epi8(0x20));
+      // merge rows
+      mask_r0 = _mm_or_si128(mask_r0, mask_r1);
+      mask_r0 = _mm_or_si128(mask_r0, mask_r2);
+      mask_r3 = _mm_or_si128(mask_r3, mask_r4);
+      mask_r3 = _mm_or_si128(mask_r3, mask_r5);
+      mask_r0 = _mm_or_si128(mask_r0, mask_r3);
+      // Add 0x3F ('?')
+      mask_r0 = _mm_add_epi8(mask_r0, _mm_set1_epi8(0x3F));
+      // Store into buffer
+      _mm_storeu_si128(reinterpret_cast<__m128i_u*>(&buffer[i]), mask_r0);
+    }
+    // Scalar encode for last chunk
+    for (; i < width; ++i) {
+      uint8_t flag_r0 = rps[0]? (uint8_t(rps[0][i] == pc) << 0) : 0;
+      uint8_t flag_r1 = rps[1]? (uint8_t(rps[1][i] == pc) << 0) : 0;
+      uint8_t flag_r2 = rps[2]? (uint8_t(rps[2][i] == pc) << 0) : 0;
+      uint8_t flag_r3 = rps[3]? (uint8_t(rps[3][i] == pc) << 0) : 0;
+      uint8_t flag_r4 = rps[4]? (uint8_t(rps[4][i] == pc) << 0) : 0;
+      uint8_t flag_r5 = rps[5]? (uint8_t(rps[5][i] == pc) << 0) : 0;
+      
+      flag_r0 |= flag_r1 | flag_r2;
+      flag_r3 |= flag_r4 | flag_r5;
+      flag_r0 |= flag_r3;
+      
+      buffer[i] = flag_r0 + 0x3F;
+    }
+    fmt::print("#{}{}{}", pc, buffer, rescan? '$' : '-');
+  }
+  
+  using time_pt = std::chrono::high_resolution_clock::time_point;
+  using time_dur = std::chrono::high_resolution_clock::duration;
+  using clock = std::chrono::high_resolution_clock;
 }  // namespace
 
 namespace term {
+  time_dur process_time;  
+  time_dur encode_time;  
 
   void encode_sixel(cv::InputArray src) {
     using namespace std::literals;
@@ -116,71 +192,65 @@ namespace term {
     // Rounding distance for palette colours.
     constexpr uint8_t pdist              = 255 / pcols;
     constexpr mtap::fixed_string palette = make_palette_string<pcols>();
-
+    
+    // PALETTIZE IMAGE
+    // ===================
+    time_pt t0 = clock::now();
+    
     // convert to grayscale
     cv::Mat img;
     cv::cvtColor(src, img, cv::COLOR_BGR2GRAY);
-
     // Perform Floyd-Steinberg dithering
     for (size_t r = 0; r < img.rows; ++r) {
+      uint8_t* rp0 = img.ptr<uint8_t>(r);
+      uint8_t* rp1 = img.ptr<uint8_t>(r + 1);
       for (size_t c = 0; c < img.cols; ++c) {
         uint8_t oldv = img.at<uint8_t>(r, c);
         int16_t err  = int16_t(oldv) - int16_t(round<255 / pcols>(oldv));
         img.at<uint8_t>(r, c) = select<255 / pcols>(oldv);
-        
-        extract(img, r, c + 1) =
-          saddus(extract(img, r, c + 1), (err * 7) / 16);
-        extract(img, r + 1, c - 1) =
-          saddus(extract(img, r + 1, c - 1), (err * 3) / 16);
-        extract(img, r + 1, c) =
-          saddus(extract(img, r + 1, c), (err * 5) / 16);
-        extract(img, r + 1, c + 1) =
-          saddus(extract(img, r + 1, c + 1), (err * 1) / 16);
+
+        if (c + 1 < img.cols) {
+          rp0[c + 1] = saddus(rp0[c + 1], err * 7 / 16);
+        }
+        if (r + 1 < img.rows) {
+          rp1[c] = saddus(rp1[c], err * 5 / 16);
+          if (c > 0) {
+            rp1[c - 1] = saddus(rp1[c - 1], err * 3 / 16);
+          }
+          if (c + 1 < img.cols) {
+            rp1[c + 1] = saddus(rp1[c + 1], err * 1 / 16);
+          }
+        }
       }
     }
+    process_time = clock::now() - t0;
 
-    // clang-format off
+    // ENCODE SIXELS
+    // ==================
+
+    // Sixel header - set palette
+    t0 = clock::now();
     fmt::print(FMT_COMPILE("\ePq{}"), std::string_view(palette));
-    // clang-format on
-    std::string buf;
-    buf.reserve(img.cols);
-    size_t len;
+
+    // setup row buffer
+    std::string buf(img.cols, '\0');
 
     for (size_t r = 0; r < img.rows; r += 6) {
+      // cache 6 row pointers
+      std::array<uint8_t*, 6> rps = {
+        img.ptr<uint8_t>(r),     
+        (r + 1 < img.rows)? img.ptr<uint8_t>(r + 1) : nullptr,
+        (r + 2 < img.rows)? img.ptr<uint8_t>(r + 2) : nullptr,
+        (r + 3 < img.rows)? img.ptr<uint8_t>(r + 3) : nullptr,
+        (r + 4 < img.rows)? img.ptr<uint8_t>(r + 4) : nullptr,
+        (r + 5 < img.rows)? img.ptr<uint8_t>(r + 5) : nullptr,
+      };
       for (size_t pc = 0; pc <= pcols; ++pc) {
-        char prev    = '\0';
-        size_t count = 0;
-        buf.clear();
-        // RLE using ! if it saves bytes
-        for (size_t c = 0; c < img.cols; ++c) {
-          char curr = encode(img, pc, r, c);
-          if (curr != prev) {
-            if (count > 0) {
-              // RLE requires at least 3 bytes (ex. !3?)
-              if (count > 3) {
-                buf.append(fmt::format("!{}{}", count, prev));
-              }
-              else {
-                buf.append(std::string(count, prev));
-              }
-            }
-            count = 0;
-            prev  = curr;
-          }
-          ++count;
-        }
-        if (count > 0) {
-          if (count > 3) {
-            buf.append(fmt::format("!{}{}", count, prev));
-          }
-          else {
-            buf.append(std::string(count, prev));
-          }
-        }
-        fmt::print("#{}{}{}", pc, buf, (pc == pcols) ? '-' : '$');
+        encode_scanline(buf, rps, pc, img.cols, pc != pcols);
       }
     }
     fmt::print("\e\\");
     std::fflush(stdout);
+    encode_time = clock::now() - t0;
   }
 }  // namespace term
