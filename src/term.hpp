@@ -15,7 +15,7 @@ namespace term {
   
   
   inline cv::Size sixel_size() {
-    #if 0
+    #if 1
     winsize size;
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &size);
     return cv::Size {int(size.ws_col) * 10, int(size.ws_row) * 20};
