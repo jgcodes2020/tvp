@@ -85,3 +85,4 @@ set_target_properties(tvp PROPERTIES
 )
 target_compile_features(tvp PUBLIC cxx_std_20)
 target_link_libraries(tvp PUBLIC opencv::opencv base64::base64 fmt::fmt)
+target_compile_options(tvp PRIVATE "-msse4.2")

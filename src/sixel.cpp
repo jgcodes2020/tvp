@@ -11,6 +11,7 @@
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -18,6 +19,7 @@
 
 #include <nmmintrin.h>
 #include <pmmintrin.h>
+#include <smmintrin.h>
 
 #include "fixed_string.hpp"
 #include "term.hpp"
@@ -104,86 +106,134 @@ namespace {
   // Takes 6 row pointers, an output buffer, a palette colour and a width.
   // Converts a cv::Mat row into sixel.
   char* encode_scanline(
-    char* buffer, const std::array<uint8_t*, 6>& rps, uint8_t pc,
+    char* ptr, const std::array<uint8_t*, 6>& rps, uint8_t pc,
     size_t width) {
-    size_t i;
-    std::vector<size_t> rle_edges;
-    char lastc = '\0';
+    std::vector<size_t> edge_indices;
+    std::vector<char> edge_values;
+    {
+      size_t i;
+      char spill[16];
+      // Previous last character in block.
+      char plc = '\0';
 
-    const __m128i spread_pc = _mm_set1_epi8(pc);
-    // SIMD encoder
-    for (i = 0; i + 15 < width; i += 16) {
-      // load 16 bytes from each row
-      __m128i mask_r0 = rps[0]
-        ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[0] + i))
-        : _mm_setzero_si128();
-      __m128i mask_r1 = rps[1]
-        ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[1] + i))
-        : _mm_setzero_si128();
-      __m128i mask_r2 = rps[2]
-        ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[2] + i))
-        : _mm_setzero_si128();
-      __m128i mask_r3 = rps[3]
-        ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[3] + i))
-        : _mm_setzero_si128();
-      __m128i mask_r4 = rps[4]
-        ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[4] + i))
-        : _mm_setzero_si128();
-      __m128i mask_r5 = rps[5]
-        ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[5] + i))
-        : _mm_setzero_si128();
-      // create bitmask
-      mask_r0 = _mm_cmpeq_epi8(mask_r0, spread_pc);
-      mask_r1 = _mm_cmpeq_epi8(mask_r1, spread_pc);
-      mask_r2 = _mm_cmpeq_epi8(mask_r2, spread_pc);
-      mask_r3 = _mm_cmpeq_epi8(mask_r3, spread_pc);
-      mask_r4 = _mm_cmpeq_epi8(mask_r4, spread_pc);
-      mask_r5 = _mm_cmpeq_epi8(mask_r5, spread_pc);
-      // mask each row
-      mask_r0 = _mm_and_si128(mask_r0, _mm_set1_epi8(0x01));
-      mask_r1 = _mm_and_si128(mask_r1, _mm_set1_epi8(0x02));
-      mask_r2 = _mm_and_si128(mask_r2, _mm_set1_epi8(0x04));
-      mask_r3 = _mm_and_si128(mask_r3, _mm_set1_epi8(0x08));
-      mask_r4 = _mm_and_si128(mask_r4, _mm_set1_epi8(0x10));
-      mask_r5 = _mm_and_si128(mask_r5, _mm_set1_epi8(0x20));
-      // merge rows
-      mask_r0 = _mm_or_si128(mask_r0, mask_r1);
-      mask_r0 = _mm_or_si128(mask_r0, mask_r2);
-      mask_r3 = _mm_or_si128(mask_r3, mask_r4);
-      mask_r3 = _mm_or_si128(mask_r3, mask_r5);
-      mask_r0 = _mm_or_si128(mask_r0, mask_r3);
-      // Add 0x3F ('?')
-      mask_r0 = _mm_add_epi8(mask_r0, _mm_set1_epi8(0x3F));
-      // Store into buffer
-      _mm_storeu_si128(reinterpret_cast<__m128i_u*>(&buffer[i]), mask_r0);
-      // RLE edge detection
-      if (lastc != buffer[i]) rle_edges.push_back(i);
-      mask_r1 = _mm_bslli_si128(mask_r0, 1);
-      mask_r1 = _mm_cmpeq_epi8(mask_r1, mask_r0);
+      const __m128i spread_pc = _mm_set1_epi8(pc);
+      // SIMD encoder
+      for (i = 0; i + 15 < width; i += 16) {
+        // load 16 bytes from each row
+        __m128i mask_r0 = rps[0]
+          ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[0] + i))
+          : _mm_setzero_si128();
+        __m128i mask_r1 = rps[1]
+          ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[1] + i))
+          : _mm_setzero_si128();
+        __m128i mask_r2 = rps[2]
+          ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[2] + i))
+          : _mm_setzero_si128();
+        __m128i mask_r3 = rps[3]
+          ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[3] + i))
+          : _mm_setzero_si128();
+        __m128i mask_r4 = rps[4]
+          ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[4] + i))
+          : _mm_setzero_si128();
+        __m128i mask_r5 = rps[5]
+          ? _mm_loadu_si128(reinterpret_cast<__m128i*>(rps[5] + i))
+          : _mm_setzero_si128();
+        // create bitmask
+        mask_r0 = _mm_cmpeq_epi8(mask_r0, spread_pc);
+        mask_r1 = _mm_cmpeq_epi8(mask_r1, spread_pc);
+        mask_r2 = _mm_cmpeq_epi8(mask_r2, spread_pc);
+        mask_r3 = _mm_cmpeq_epi8(mask_r3, spread_pc);
+        mask_r4 = _mm_cmpeq_epi8(mask_r4, spread_pc);
+        mask_r5 = _mm_cmpeq_epi8(mask_r5, spread_pc);
+        // mask each row
+        mask_r0 = _mm_and_si128(mask_r0, _mm_set1_epi8(0x01));
+        mask_r1 = _mm_and_si128(mask_r1, _mm_set1_epi8(0x02));
+        mask_r2 = _mm_and_si128(mask_r2, _mm_set1_epi8(0x04));
+        mask_r3 = _mm_and_si128(mask_r3, _mm_set1_epi8(0x08));
+        mask_r4 = _mm_and_si128(mask_r4, _mm_set1_epi8(0x10));
+        mask_r5 = _mm_and_si128(mask_r5, _mm_set1_epi8(0x20));
+        // merge rows
+        mask_r0 = _mm_or_si128(mask_r0, mask_r1);
+        mask_r0 = _mm_or_si128(mask_r0, mask_r2);
+        mask_r3 = _mm_or_si128(mask_r3, mask_r4);
+        mask_r3 = _mm_or_si128(mask_r3, mask_r5);
+        mask_r0 = _mm_or_si128(mask_r0, mask_r3);
+        // Add 0x3F ('?')
+        mask_r0 = _mm_add_epi8(mask_r0, _mm_set1_epi8(0x3F));
+        // Spill to memory for later
+        _mm_storeu_si128(reinterpret_cast<__m128i_u*>(spill), mask_r0);
+        // Check edge between blocks
+        if (plc != spill[0]) {
+          edge_indices.push_back(i);
+          edge_values.push_back(spill[0]);
+        }
+        // check edge within blocks
+        mask_r1            = _mm_bslli_si128(mask_r0, 1);
+        mask_r1            = _mm_cmpeq_epi8(mask_r1, mask_r0);
+        uint16_t edge_bits = _mm_movemask_epi8(mask_r1);
+        edge_bits          = ~edge_bits & 0xFFFE;
+        while (edge_bits != 0) {
+          uint16_t pos = std::countr_zero(edge_bits);
+          edge_indices.push_back(i + pos);
+          edge_values.push_back(spill[pos]);
+          edge_bits &= (edge_bits - 1);
+        }
+        // update plc for next block
+        plc = spill[15];
+      }
+      // Scalar encode for last chunk
+      for (; i < width; ++i) {
+        uint8_t flag_r0 = rps[0] ? (uint8_t(rps[0][i] == pc) << 0) : 0;
+        uint8_t flag_r1 = rps[1] ? (uint8_t(rps[1][i] == pc) << 1) : 0;
+        uint8_t flag_r2 = rps[2] ? (uint8_t(rps[2][i] == pc) << 2) : 0;
+        uint8_t flag_r3 = rps[3] ? (uint8_t(rps[3][i] == pc) << 3) : 0;
+        uint8_t flag_r4 = rps[4] ? (uint8_t(rps[4][i] == pc) << 4) : 0;
+        uint8_t flag_r5 = rps[5] ? (uint8_t(rps[5][i] == pc) << 5) : 0;
+
+        flag_r0 |= flag_r1 | flag_r2;
+        flag_r3 |= flag_r4 | flag_r5;
+        flag_r0 |= flag_r3;
+
+        char cc = flag_r0 + 0x3F;
+        if (plc != cc) {
+          edge_indices.push_back(i);
+          edge_values.push_back(cc);
+        }
+        plc = cc;
+      }
+      // add end of string to edge_indexes
+      edge_indices.push_back(width);
     }
-    // Scalar encode for last chunk
-    for (; i < width; ++i) {
-      uint8_t flag_r0 = rps[0] ? (uint8_t(rps[0][i] == pc) << 0) : 0;
-      uint8_t flag_r1 = rps[1] ? (uint8_t(rps[1][i] == pc) << 1) : 0;
-      uint8_t flag_r2 = rps[2] ? (uint8_t(rps[2][i] == pc) << 2) : 0;
-      uint8_t flag_r3 = rps[3] ? (uint8_t(rps[3][i] == pc) << 3) : 0;
-      uint8_t flag_r4 = rps[4] ? (uint8_t(rps[4][i] == pc) << 4) : 0;
-      uint8_t flag_r5 = rps[5] ? (uint8_t(rps[5][i] == pc) << 5) : 0;
-
-      flag_r0 |= flag_r1 | flag_r2;
-      flag_r3 |= flag_r4 | flag_r5;
-      flag_r0 |= flag_r3;
-
-      buffer[i] = flag_r0 + 0x3F;
+    {
+      if (edge_values.size() + 1 != edge_indices.size()) {
+        throw std::logic_error("Edge values and indices are not correctly set up");
+      }
+      for (size_t i = 0; i < edge_values.size(); i++) {
+        size_t diff = edge_indices[i + 1] - edge_indices[i];
+        switch (diff) {
+          // repeat the character if ≤3 chars, as RLE is inefficient
+          case 3:
+            *ptr++ = edge_values[i];
+          case 2:
+            *ptr++ = edge_values[i];
+          case 1:
+            *ptr++ = edge_values[i];
+            break;
+          // Use sixel RLE if >3 chars
+          default:
+            ptr = fmt::format_to(ptr, "!{}{}", diff, edge_values[i]);
+             break;
+        }
+      }
     }
-    return buffer + width;
+    return ptr;
   }
-  
+
   template <uint8_t pcols>
   void encode_image(cv::Mat& img) {
     constexpr mtap::fixed_string palette = make_palette_string<pcols>();
     fmt::print(FMT_COMPILE("\ePq{}"), std::string_view(palette));
-    
+
     thread_local std::unique_ptr<char[]> row_buffer =
       std::make_unique<char[]>(img.cols);
 
@@ -199,8 +249,10 @@ namespace {
       };
       for (size_t pc = 0; pc <= pcols; ++pc) {
         // begin index for new scanline
-        encode_scanline(&row_buffer[0], rps, pc, img.cols);
-        fmt::print("#{}{}{}", pc, std::string_view(&row_buffer[0], img.cols), (pc == pcols)? '-' : '$');
+        char* end = encode_scanline(&row_buffer[0], rps, pc, img.cols);
+        fmt::print(
+          "#{}{}{}", pc, std::string_view(&row_buffer[0], end),
+          (pc == pcols) ? '-' : '$');
       }
     }
     std::fputs("\e\\", stdout);
@@ -222,8 +274,7 @@ namespace term {
     // Number of palette colours.
     constexpr uint8_t pcols = 17;
     // Rounding distance for palette colours.
-    constexpr uint8_t pdist              = 255 / pcols;
-    
+    constexpr uint8_t pdist = 255 / pcols;
 
     // PALETTIZE IMAGE
     // ===================
@@ -238,11 +289,11 @@ namespace term {
       uint8_t* rp1 = img.ptr<uint8_t>(r + 1);
       for (size_t c = 0; c < img.cols; ++c) {
         constexpr uint8_t div = 255 / pcols;
-        
+
         uint8_t oldv = img.at<uint8_t>(r, c);
-        uint8_t sel = select<div>(oldv);
+        uint8_t sel  = select<div>(oldv);
         int16_t err  = int16_t(oldv) - int16_t(sel * div);
-        rp0[c] = sel;
+        rp0[c]       = sel;
 
         if (c + 1 < img.cols) {
           rp0[c + 1] = saddus(rp0[c + 1], err * 7 / 16);
