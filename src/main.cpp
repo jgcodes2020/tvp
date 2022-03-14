@@ -63,6 +63,7 @@ int main(int argc, char* argv[]) {
     resize_to_term(frame);
     term::encode_sixel(frame);
     thread::sleep_until(time + mspf);
+    time = chr::high_resolution_clock::now();
   }
   term::set_alt_buffer(false);
   term::set_decsdm(false);

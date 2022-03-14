@@ -6,12 +6,13 @@
 
 #include <algorithm>
 #include <bit>
-#include <cstdio>
 #include <chrono>
+#include <cstdio>
 #include <iterator>
 #include <limits>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -99,17 +100,16 @@ namespace {
     str[len] = '\0';
     return str;
   }
-  
+
   // Takes 6 row pointers, an output buffer, a palette colour and a width.
   // Converts a cv::Mat row into sixel.
-  void encode_scanline(
-    std::string& buffer, const std::array<uint8_t*, 6>& rps, uint8_t pc, size_t width, bool rescan) {
-
+  char* encode_scanline(
+    char* buffer, const std::array<uint8_t*, 6>& rps, uint8_t pc,
+    size_t width) {
     size_t i;
-    
-    // either 0x0000 or 0xFFFF.
-    uint16_t rle_state = 0;
-    
+    std::vector<size_t> rle_edges;
+    char lastc = '\0';
+
     const __m128i spread_pc = _mm_set1_epi8(pc);
     // SIMD encoder
     for (i = 0; i + 15 < width; i += 16) {
@@ -156,33 +156,65 @@ namespace {
       mask_r0 = _mm_add_epi8(mask_r0, _mm_set1_epi8(0x3F));
       // Store into buffer
       _mm_storeu_si128(reinterpret_cast<__m128i_u*>(&buffer[i]), mask_r0);
+      // RLE edge detection
+      if (lastc != buffer[i]) rle_edges.push_back(i);
+      mask_r1 = _mm_bslli_si128(mask_r0, 1);
+      mask_r1 = _mm_cmpeq_epi8(mask_r1, mask_r0);
     }
     // Scalar encode for last chunk
     for (; i < width; ++i) {
-      uint8_t flag_r0 = rps[0]? (uint8_t(rps[0][i] == pc) << 0) : 0;
-      uint8_t flag_r1 = rps[1]? (uint8_t(rps[1][i] == pc) << 0) : 0;
-      uint8_t flag_r2 = rps[2]? (uint8_t(rps[2][i] == pc) << 0) : 0;
-      uint8_t flag_r3 = rps[3]? (uint8_t(rps[3][i] == pc) << 0) : 0;
-      uint8_t flag_r4 = rps[4]? (uint8_t(rps[4][i] == pc) << 0) : 0;
-      uint8_t flag_r5 = rps[5]? (uint8_t(rps[5][i] == pc) << 0) : 0;
-      
+      uint8_t flag_r0 = rps[0] ? (uint8_t(rps[0][i] == pc) << 0) : 0;
+      uint8_t flag_r1 = rps[1] ? (uint8_t(rps[1][i] == pc) << 1) : 0;
+      uint8_t flag_r2 = rps[2] ? (uint8_t(rps[2][i] == pc) << 2) : 0;
+      uint8_t flag_r3 = rps[3] ? (uint8_t(rps[3][i] == pc) << 3) : 0;
+      uint8_t flag_r4 = rps[4] ? (uint8_t(rps[4][i] == pc) << 4) : 0;
+      uint8_t flag_r5 = rps[5] ? (uint8_t(rps[5][i] == pc) << 5) : 0;
+
       flag_r0 |= flag_r1 | flag_r2;
       flag_r3 |= flag_r4 | flag_r5;
       flag_r0 |= flag_r3;
-      
+
       buffer[i] = flag_r0 + 0x3F;
     }
-    fmt::print("#{}{}{}", pc, buffer, rescan? '$' : '-');
+    return buffer + width;
   }
   
-  using time_pt = std::chrono::high_resolution_clock::time_point;
+  template <uint8_t pcols>
+  void encode_image(cv::Mat& img) {
+    constexpr mtap::fixed_string palette = make_palette_string<pcols>();
+    fmt::print(FMT_COMPILE("\ePq{}"), std::string_view(palette));
+    
+    thread_local std::unique_ptr<char[]> row_buffer =
+      std::make_unique<char[]>(img.cols);
+
+    for (size_t r = 0; r < img.rows; r += 6) {
+      // cache 6 row pointers
+      std::array<uint8_t*, 6> rps = {
+        img.ptr<uint8_t>(r),
+        (r + 1 < img.rows) ? img.ptr<uint8_t>(r + 1) : nullptr,
+        (r + 2 < img.rows) ? img.ptr<uint8_t>(r + 2) : nullptr,
+        (r + 3 < img.rows) ? img.ptr<uint8_t>(r + 3) : nullptr,
+        (r + 4 < img.rows) ? img.ptr<uint8_t>(r + 4) : nullptr,
+        (r + 5 < img.rows) ? img.ptr<uint8_t>(r + 5) : nullptr,
+      };
+      for (size_t pc = 0; pc <= pcols; ++pc) {
+        // begin index for new scanline
+        encode_scanline(&row_buffer[0], rps, pc, img.cols);
+        fmt::print("#{}{}{}", pc, std::string_view(&row_buffer[0], img.cols), (pc == pcols)? '-' : '$');
+      }
+    }
+    std::fputs("\e\\", stdout);
+    std::fflush(stdout);
+  }
+
+  using time_pt  = std::chrono::high_resolution_clock::time_point;
   using time_dur = std::chrono::high_resolution_clock::duration;
-  using clock = std::chrono::high_resolution_clock;
+  using clock    = std::chrono::high_resolution_clock;
 }  // namespace
 
 namespace term {
-  time_dur process_time;  
-  time_dur encode_time;  
+  time_dur process_time;
+  time_dur encode_time;
 
   void encode_sixel(cv::InputArray src) {
     using namespace std::literals;
@@ -191,12 +223,12 @@ namespace term {
     constexpr uint8_t pcols = 17;
     // Rounding distance for palette colours.
     constexpr uint8_t pdist              = 255 / pcols;
-    constexpr mtap::fixed_string palette = make_palette_string<pcols>();
     
+
     // PALETTIZE IMAGE
     // ===================
     time_pt t0 = clock::now();
-    
+
     // convert to grayscale
     cv::Mat img;
     cv::cvtColor(src, img, cv::COLOR_BGR2GRAY);
@@ -205,9 +237,12 @@ namespace term {
       uint8_t* rp0 = img.ptr<uint8_t>(r);
       uint8_t* rp1 = img.ptr<uint8_t>(r + 1);
       for (size_t c = 0; c < img.cols; ++c) {
+        constexpr uint8_t div = 255 / pcols;
+        
         uint8_t oldv = img.at<uint8_t>(r, c);
-        int16_t err  = int16_t(oldv) - int16_t(round<255 / pcols>(oldv));
-        img.at<uint8_t>(r, c) = select<255 / pcols>(oldv);
+        uint8_t sel = select<div>(oldv);
+        int16_t err  = int16_t(oldv) - int16_t(sel * div);
+        rp0[c] = sel;
 
         if (c + 1 < img.cols) {
           rp0[c + 1] = saddus(rp0[c + 1], err * 7 / 16);
@@ -227,30 +262,8 @@ namespace term {
 
     // ENCODE SIXELS
     // ==================
-
-    // Sixel header - set palette
     t0 = clock::now();
-    fmt::print(FMT_COMPILE("\ePq{}"), std::string_view(palette));
-
-    // setup row buffer
-    std::string buf(img.cols, '\0');
-
-    for (size_t r = 0; r < img.rows; r += 6) {
-      // cache 6 row pointers
-      std::array<uint8_t*, 6> rps = {
-        img.ptr<uint8_t>(r),     
-        (r + 1 < img.rows)? img.ptr<uint8_t>(r + 1) : nullptr,
-        (r + 2 < img.rows)? img.ptr<uint8_t>(r + 2) : nullptr,
-        (r + 3 < img.rows)? img.ptr<uint8_t>(r + 3) : nullptr,
-        (r + 4 < img.rows)? img.ptr<uint8_t>(r + 4) : nullptr,
-        (r + 5 < img.rows)? img.ptr<uint8_t>(r + 5) : nullptr,
-      };
-      for (size_t pc = 0; pc <= pcols; ++pc) {
-        encode_scanline(buf, rps, pc, img.cols, pc != pcols);
-      }
-    }
-    fmt::print("\e\\");
-    std::fflush(stdout);
+    encode_image<pcols>(img);
     encode_time = clock::now() - t0;
   }
 }  // namespace term

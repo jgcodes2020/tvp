@@ -31,7 +31,7 @@ namespace term {
     fmt::print("{}", set? "\e[?80h" : "\e[?80l");
   }
   inline void cls() {
-    fmt::print("\e[2J\e[3J\e[H");
+    std::fputs("\e[2J\e[3J\e[H", stdout);
   }
   
   void encode_sixel(cv::InputArray arr);
