@@ -1,4 +1,7 @@
 # TVP (Terminal Video Player)
-A video player. In your terminal. Powered by Sixel. In black and white.
+My attempt at creating a real-time Sixel-based video player with as much power as the terminals can handle.
 
-While it will run on any terminal, it's likely to be slow for large screens. mlterm is recommended for the best viewing experience.
+The current version can deal with 6-bit grayscale on mlterm (mlterm seems to be the most powerful sixel terminal to my knowledge). While a colour encoder is possible, I have yet to implement one, as the colour rounding algorithm only works for grayscale images.
+
+## Build instructions
+Build as you would a normal CMake project. This project also requires Conan.
