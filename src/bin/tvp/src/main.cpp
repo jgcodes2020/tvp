@@ -79,4 +79,4 @@ int main(int argc, char* argv[]) {
   resize_to_term(frame);
   term::encode_sixel(frame);
 #endif
-}
+} 
