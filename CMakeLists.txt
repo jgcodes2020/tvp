@@ -21,6 +21,9 @@ conan_configure_packages(
 
 add_executable(tvp
   "src/main.cpp"
+  "src/sixel.cpp"
+  "src/term.hpp"
 )
 target_compile_features(tvp PUBLIC cxx_std_20)
-target_link_libraries(tvp PUBLIC avcpp::avcpp fmt::fmt)
+target_link_libraries(tvp PUBLIC avcpp::avcpp fmt::fmt libdivide::libdivide)
+target_compile_options(tvp PUBLIC "-msse4.2")

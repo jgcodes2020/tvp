@@ -15,6 +15,7 @@ BinPackArguments: true
 BinPackParameters: true
 
 BreakBeforeBraces: Custom
+BreakBeforeTernaryOperator: false
 BraceWrapping:
   AfterControlStatement: Never
   

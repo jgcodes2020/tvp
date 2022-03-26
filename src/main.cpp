@@ -4,16 +4,17 @@
 #include <exception>
 #include <fstream>
 #include <ios>
+#include <chrono>
 #include <iterator>
 #include <optional>
 #include <system_error>
 #include <vector>
+#include <thread>
 
 
+#include <avcpp/dictionary.h>
 #include <avcpp/frame.h>
 #include <avcpp/pixelformat.h>
-#include <cxxabi.h>
-
 #include <avcpp/formatcontext.h>
 #include <avcpp/codec.h>
 #include <avcpp/codeccontext.h>
@@ -24,9 +25,17 @@
 #include <fmt/core.h>
 #include <fmt/ostream.h>
 
+#include <cxxabi.h>
+
+#include "term.hpp"
+
 
 
 int main(int argc, char* argv[]) {
+  using namespace std::literals;
+  namespace this_thread = std::this_thread;
+  namespace chr = std::chrono;
+  
   // check args
   if (argc < 2) {
     return 1;
@@ -34,25 +43,25 @@ int main(int argc, char* argv[]) {
   
   // setup terminate handler
   std::set_terminate([]() {
-    if (std::uncaught_exceptions() > 0) {
-      try {
-        std::rethrow_exception(std::exception_ptr());
-      }
-      catch (const std::exception& err) {
-        size_t len;
-        int status = -4;
-        std::unique_ptr<char[], decltype(std::free)*> str(
-          abi::__cxa_demangle(typeid(err).name(), NULL, &len, &status), std::free);
-        
-        fmt::print("Exception of type {}: {}\n", str.get(), err.what());
-      }
-      catch (...) {
-        fmt::print("Exception of unknown type\n");
-      }
+    bool exc_flag = true;
+    try {
+      std::rethrow_exception(std::current_exception());
     }
-    else {
+    catch (const std::exception& err) {
+      size_t len;
+      int status = -4;
+      std::unique_ptr<char[], decltype(std::free)*> str(
+        abi::__cxa_demangle(typeid(err).name(), NULL, &len, &status), std::free);
+      
+      fmt::print("exception occurred ({})\n {}\n", std::string_view(str.get(), len), err.what());
+      exc_flag = false;
+    }
+    catch (...) {
+      fmt::print("Exception of unknown type\n");
+      exc_flag = false;
+    }
+    if (exc_flag)
       fmt::print("std::terminate called without an exception\n");
-    }
     std::exit(1);
   });
   
@@ -89,22 +98,33 @@ int main(int argc, char* argv[]) {
   
   // Create rescaler
   av::VideoRescaler scaler {
-    decoder.width(), decoder.height(), av::PixelFormat("gray")
+    10 * 80, 20 * 24, av::PixelFormat("gray")
   };
+  // switch to alt buffer, unset DECSDM
+  std::fputs("\e[?1049h\e[?80h", stdout);
+  std::fflush(stdout);
   
   // Decode stuff
   av::Packet packet;
   size_t count = 0;
+  
+  chr::high_resolution_clock::time_point frame_begin;
+  
   while (packet = format.readPacket(), bool(packet)) {
-    if (count >= 10) break;
+    frame_begin = chr::high_resolution_clock::now();
     if (packet.streamIndex() != vindex) continue;
     
     av::VideoFrame frame = decoder.decode(packet);
     if (!frame.isComplete()) continue;
     
     av::VideoFrame frame2 = scaler.rescale(frame, av::throws());
+    term::sixel_encode(frame2, {.ncols = 16});
     
-    
+    this_thread::sleep_until(frame_begin + 50ms);
     count++;
   }
+  
+  // switch to main buffer, set DECSDM
+  std::fputs("\e[?1049l\e[?80l", stdout);
+  std::fflush(stdout);
 }

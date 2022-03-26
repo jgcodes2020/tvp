@@ -5,10 +5,8 @@
 
 namespace term {
   struct sixel_params {
-    uint8_t palette;
+    uint8_t ncols = 16;
   };
 
-  void sixel_encode(
-    av::VideoFrame buffer, size_t width, size_t height,
-    sixel_params params = {});
+  void sixel_encode(const av::VideoFrame& buffer, sixel_params params = {});
 }  // namespace term
