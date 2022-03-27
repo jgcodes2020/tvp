@@ -65,10 +65,9 @@ void term::sixel_encode(const av::VideoFrame &frame, sixel_params params) {
   const size_t height = frame.height();
   const size_t frame_size = frame.size();
 
-  libdivide_u16_t cdist_div = libdivide_u16_gen(cdist);
+  const libdivide_u16_t cdist_div = libdivide_u16_gen(cdist);
   // init framebuffer
-  auto fb = std::make_unique<uint8_t[]>(frame_size);
-  std::copy_n(frame.data(), frame.size(), fb.get());
+  uint8_t* fb = frame.raw()->data[0];
 
   // DITHERING
   // =====================
@@ -112,7 +111,7 @@ void term::sixel_encode(const av::VideoFrame &frame, sixel_params params) {
   std::ofstream ofs("out.pgm");
   fmt::format_to(std::ostreambuf_iterator(ofs), "P5 {} {} 255\n", frame.width(),
                  frame.height());
-  ofs.write(reinterpret_cast<const char *>(fb.get()), frame.size());
+  ofs.write(reinterpret_cast<const char *>(&fb[0]), frame.size());
 
   // ENCODE SIXEL
   // =========

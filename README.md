@@ -5,3 +5,10 @@ The current version can deal with 6-bit grayscale on mlterm (mlterm seems to be 
 
 ## Build instructions
 Build as you would a normal CMake project. This project also requires Conan.
+
+Note: you may have issues building FFmpeg. If that is the case:
+- go to `cmake/ConanHelper.cmake`
+- locate the macro `conan_configure_install`
+- edit `BUILD missing` to `BUILD missing <library>` (e.g. `BUILD missing libx265`)
+
+Configure the project, then change the line mentioned above back to `BUILD missing`.
