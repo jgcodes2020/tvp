@@ -38,6 +38,7 @@ int main(int argc, char* argv[]) {
   using namespace std::literals;
   namespace this_thread = std::this_thread;
   namespace chr = std::chrono;
+  using hires_clock = chr::high_resolution_clock;
   
   // check args
   if (argc < 2) {
@@ -115,18 +116,28 @@ int main(int argc, char* argv[]) {
   std::fputs("\e[?1049h\e[?80h", stdout);
   std::fflush(stdout);
   
-  // Decode stuff
+  // Decode variables
   av::Packet packet;
   size_t count = 0;
   
-  chr::high_resolution_clock::time_point frame_begin;
+  // Timekeeping variables
+  hires_clock::time_point frame_begin = hires_clock::now();
+  chr::microseconds lag = 0us;
   
   while ((packet = format.readPacket(), bool(packet)) & run_flag) {
     // check for complete frame
-    frame_begin = chr::high_resolution_clock::now();
+    frame_begin = hires_clock::now();
+    // only worry about video frames
     if (packet.streamIndex() != vindex) continue;
+    // check frame is complete
     av::VideoFrame frame = decoder.decode(packet);
     if (!frame.isComplete()) continue;
+    // check if we need to skip a frame
+    if (lag > frame_time) {
+      lag -= frame_time;
+      continue;
+    }
+    
     
     // Determine rescale dimensions
     term::term_size ts = term::query_size();
@@ -149,7 +160,17 @@ int main(int argc, char* argv[]) {
     av::VideoFrame frame2 = scaler.rescale(frame, av::throws());
     term::sixel_encode(frame2, {.ncols = 16});
     
-    this_thread::sleep_until(frame_begin + frame_time);
+    {
+      auto now = hires_clock::now();
+      auto exp = frame_begin + frame_time;
+      if (now > exp) {
+        // keep track of current lag for frameskipping
+        lag += chr::duration_cast<chr::microseconds>(now - exp);
+      }
+      else {
+        this_thread::sleep_for(exp - now);
+      }
+    }
     count++;
   }
   

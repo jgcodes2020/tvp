@@ -123,11 +123,15 @@ void term::sixel_encode(const av::VideoFrame &frame, sixel_params params) {
   edge_vals.reserve(width);
   decltype(auto) row_buf = std::make_unique<char[]>(width);
 
-  // Sixel introducer
-  std::fputs("\ePq", stdout);
-  // Palette
-  for (size_t i = 0; i <= params.ncols; i++) {
-    fmt::print("#{0};2;{1};{1};{1}", i, (i * 100 / params.ncols));
+  // Sixel introducer and palette
+  {
+    // 4608 = len("#255;2;255;255;255") * 256
+    auto buffer = std::make_unique<char[]>(4608);
+    char* pos = &buffer[0];
+    for (size_t i = 0; i <= params.ncols; i++) {
+      pos = fmt::format_to(pos, "#{0};2;{1};{1};{1}", i, i * 100 / params.ncols);
+    }
+    fmt::print("\ePq{}", std::string_view(&buffer[0], pos));
   }
   // 6 rows = 1 sixel scanline
   for (size_t r = 0; r < height; r += 6) {
