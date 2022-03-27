@@ -23,6 +23,7 @@ add_executable(tvp
   "src/main.cpp"
   "src/sixel.cpp"
   "src/term.hpp"
+  "src/termutils.cpp"
 )
 target_compile_features(tvp PUBLIC cxx_std_20)
 target_link_libraries(tvp PUBLIC avcpp::avcpp fmt::fmt libdivide::libdivide)

@@ -60,12 +60,12 @@ void term::sixel_encode(const av::VideoFrame &frame, sixel_params params) {
     throw std::invalid_argument("Requires grayscale image");
   }
   // Useful constants
-  const uint8_t pcol_div = 255 / params.ncols;
+  const uint8_t cdist = 255 / params.ncols;
   const size_t width = frame.width();
   const size_t height = frame.height();
   const size_t frame_size = frame.size();
 
-  libdivide_u16_t ncdiv = libdivide_u16_gen(pcol_div);
+  libdivide_u16_t cdist_div = libdivide_u16_gen(cdist);
   // init framebuffer
   auto fb = std::make_unique<uint8_t[]>(frame_size);
   std::copy_n(frame.data(), frame.size(), fb.get());
@@ -77,8 +77,8 @@ void term::sixel_encode(const av::VideoFrame &frame, sixel_params params) {
     for (size_t r = 0; r < frame.height(); r++) {
       for (size_t c = 0; c < frame.width(); c++, i++) {
         uint8_t oldv = fb[i];
-        fb[i] = quantize(oldv, pcol_div);
-        int16_t diff = int16_t(oldv) - int16_t(fb[i] * pcol_div);
+        fb[i] = quantize_ld(oldv, cdist_div, cdist);
+        int16_t diff = int16_t(oldv) - int16_t(fb[i] * cdist);
         // Floyd-Steinberg matrix looks like this:
         // o x 7
         // 3 5 1
@@ -212,14 +212,14 @@ void term::sixel_encode(const av::VideoFrame &frame, sixel_params params) {
           // Spill to memory for random access later
           std::array<char, 16> dump;
           _mm_storeu_si128(reinterpret_cast<__m128i_u *>(dump.data()), chunk);
-          
+
           // Shift right 1 byte + carry
           __m128i check = _mm_bslli_si128(chunk, 1);
           check = _mm_insert_epi8(check, carry, 0);
           // Generate compare bitmask
           check = _mm_cmpeq_epi8(chunk, check);
           uint16_t edge_mask = ~_mm_movemask_epi8(check);
-          
+
           // Extract bit positions
           while (edge_mask != 0) {
             uint16_t ctz = std::countr_zero(edge_mask);
@@ -231,10 +231,12 @@ void term::sixel_encode(const av::VideoFrame &frame, sixel_params params) {
       }
       // Scalar loop to cover last few bytes
       for (; c < width; c++) {
-        char byte =
-            uint8_t(rps[0][c] == pc) << 0 | uint8_t(rps[1][c] == pc) << 1 |
-            uint8_t(rps[2][c] == pc) << 2 | uint8_t(rps[3][c] == pc) << 3 |
-            uint8_t(rps[4][c] == pc) << 4 | uint8_t(rps[5][c] == pc) << 5;
+        char byte = (rps[0] ? (uint8_t(rps[0][c] == pc) << 0) : 0) |
+                    (rps[1] ? (uint8_t(rps[1][c] == pc) << 1) : 0) |
+                    (rps[2] ? (uint8_t(rps[2][c] == pc) << 2) : 0) |
+                    (rps[3] ? (uint8_t(rps[3][c] == pc) << 3) : 0) |
+                    (rps[4] ? (uint8_t(rps[4][c] == pc) << 4) : 0) |
+                    (rps[5] ? (uint8_t(rps[5][c] == pc) << 5) : 0);
         byte += 0x3F;
 
         if (byte != carry) {
@@ -245,32 +247,35 @@ void term::sixel_encode(const av::VideoFrame &frame, sixel_params params) {
       }
       // Complete edge vector
       edge_idxs.push_back(width);
-      if (edge_idxs.size() - 1 != edge_vals.size()) {
-        throw std::runtime_error("Internal error: edge vectors don't match");
-      }
       
-      // Run length encoder
-      char* buf_end = row_buf.get();
-      for (size_t i = 0; i < edge_vals.size(); i++) {
-        const size_t len = edge_idxs[i + 1] - edge_idxs[i];
-        const char val = edge_vals[i];
-        
-        switch (len) {
-        case 3:
-          *buf_end++ = val;
-        case 2:
-          *buf_end++ = val;
-        case 1:
-          *buf_end++ = val;
-        case 0:
-          break;
-        default:
-          buf_end = fmt::format_to(buf_end, "!{}{}", len, val);
+      // layer should only be written if it has content
+      if (!(edge_idxs.size() == 2 && edge_vals[0] == '?')) {
+        // Run length encoder
+        char *buf_end = row_buf.get();
+        for (size_t i = 0; i < edge_vals.size(); i++) {
+          const size_t len = edge_idxs[i + 1] - edge_idxs[i];
+          const char val = edge_vals[i];
+
+          switch (len) {
+          case 3:
+            *buf_end++ = val;
+          case 2:
+            *buf_end++ = val;
+          case 1:
+            *buf_end++ = val;
+          case 0:
+            break;
+          default:
+            buf_end = fmt::format_to(buf_end, "!{}{}", len, val);
+          }
         }
+        // Line terminator char
+        char lt = (pc == params.ncols) ? '-' : '$';
+        fmt::print("#{}{}{}", pc, std::string_view(row_buf.get(), buf_end), lt);
       }
-      // Line terminator char
-      char lt = (pc == params.ncols)? '-' : '$';
-      fmt::print("#{}{}{}", pc, std::string_view(row_buf.get(), buf_end), lt);
+      else if (pc == params.ncols) {
+        fmt::print("$");
+      }
     }
   }
   std::fputs("\e\\", stdout);

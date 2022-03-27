@@ -9,4 +9,11 @@ namespace term {
   };
 
   void sixel_encode(const av::VideoFrame& buffer, sixel_params params = {});
+  
+  struct term_size {
+    size_t width, height;
+  };
+  
+  // Queries terminal size. If there is no terminal, return 80x24.
+  term_size query_size();
 }  // namespace term

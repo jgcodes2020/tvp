@@ -1,3 +1,5 @@
+#include <atomic>
+
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -11,7 +13,6 @@
 #include <vector>
 #include <thread>
 
-
 #include <avcpp/dictionary.h>
 #include <avcpp/frame.h>
 #include <avcpp/pixelformat.h>
@@ -20,12 +21,14 @@
 #include <avcpp/codeccontext.h>
 #include <avcpp/stream.h>
 #include <avcpp/packet.h>
+#include <avcpp/rational.h>
 #include <avcpp/videorescaler.h>
 
 #include <fmt/core.h>
 #include <fmt/ostream.h>
 
 #include <cxxabi.h>
+#include <signal.h>
 
 #include "term.hpp"
 
@@ -73,11 +76,17 @@ int main(int argc, char* argv[]) {
   // Search for video stream
   av::Stream vstream;
   int vindex;
+  chr::microseconds frame_time;
   for (size_t i = 0; i < format.streamsCount(); i++) {
     av::Stream s = format.stream(i);
     if (s.isVideo()) {
       vstream = s;
       vindex = i;
+      
+      auto fps = s.frameRate();
+      // no overloaded operator, multiply by reciprocal
+      frame_time = 1'000'000us * fps.getDenominator() / fps.getNumerator();
+      
       break;
     }
   }
@@ -96,10 +105,12 @@ int main(int argc, char* argv[]) {
     decoder.open(codec);
   }
   
-  // Create rescaler
-  av::VideoRescaler scaler {
-    10 * 80, 20 * 24, av::PixelFormat("gray")
-  };
+  // Setup atomic run flag
+  static std::atomic_bool run_flag = true;
+  signal(SIGINT, [](int sig) {
+    run_flag = false;
+  });
+  
   // switch to alt buffer, unset DECSDM
   std::fputs("\e[?1049h\e[?80h", stdout);
   std::fflush(stdout);
@@ -110,17 +121,35 @@ int main(int argc, char* argv[]) {
   
   chr::high_resolution_clock::time_point frame_begin;
   
-  while (packet = format.readPacket(), bool(packet)) {
+  while ((packet = format.readPacket(), bool(packet)) & run_flag) {
+    // check for complete frame
     frame_begin = chr::high_resolution_clock::now();
     if (packet.streamIndex() != vindex) continue;
-    
     av::VideoFrame frame = decoder.decode(packet);
     if (!frame.isComplete()) continue;
     
+    // Determine rescale dimensions
+    term::term_size ts = term::query_size();
+    ts = {ts.width * 10, ts.height * 20};
+    size_t fw, fh;
+    {
+      av::Rational term_aspect {int(ts.width), int(ts.height)};
+      av::Rational video_aspect {int(decoder.width()), int(decoder.height())};
+      
+      if (video_aspect < term_aspect) {
+        fh = ts.height;
+        fw = decoder.width() * ts.height / decoder.height();
+      }
+      else {
+        fw = ts.width;
+        fh = decoder.height() * ts.width / decoder.width();
+      }
+    }
+    av::VideoRescaler scaler(fw, fh, av::PixelFormat("gray"));
     av::VideoFrame frame2 = scaler.rescale(frame, av::throws());
     term::sixel_encode(frame2, {.ncols = 16});
     
-    this_thread::sleep_until(frame_begin + 50ms);
+    this_thread::sleep_until(frame_begin + frame_time);
     count++;
   }
   
