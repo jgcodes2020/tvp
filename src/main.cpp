@@ -141,7 +141,6 @@ int main(int argc, char* argv[]) {
     
     // Determine rescale dimensions
     term::term_size ts = term::query_size();
-    ts = {ts.width * 10, ts.height * 20};
     size_t fw, fh;
     {
       av::Rational term_aspect {int(ts.width), int(ts.height)};

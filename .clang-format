@@ -15,7 +15,6 @@ BinPackArguments: true
 BinPackParameters: true
 
 BreakBeforeBraces: Custom
-BreakBeforeTernaryOperator: false
 BraceWrapping:
   AfterControlStatement: Never
   
@@ -43,6 +42,7 @@ BreakStringLiterals: false
 BreakConstructorInitializers: AfterColon
 
 ContinuationIndentWidth: 2
+ConstructorInitializerIndentWidth: 2
 Cpp11BracedListStyle: true
 IncludeCategories:
   # POSIX

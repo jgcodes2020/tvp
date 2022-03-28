@@ -10,6 +10,11 @@ term::term_size term::query_size() {
   else {
     struct winsize ws;
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
-    return {ws.ws_col, ws.ws_row};
+    if (ws.ws_xpixel && ws.ws_ypixel) {
+      return {ws.ws_xpixel, ws.ws_ypixel};
+    }
+    else {
+      return {size_t(ws.ws_col) * 10, size_t(ws.ws_row) * 20};
+    }
   }
 }
