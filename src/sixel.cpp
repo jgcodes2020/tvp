@@ -108,10 +108,6 @@ void term::sixel_encode(const av::VideoFrame &frame, sixel_params params) {
       }
     }
   }
-  std::ofstream ofs("out.pgm");
-  fmt::format_to(std::ostreambuf_iterator(ofs), "P5 {} {} 255\n", frame.width(),
-                 frame.height());
-  ofs.write(reinterpret_cast<const char *>(&fb[0]), frame.size());
 
   // ENCODE SIXEL
   // =========

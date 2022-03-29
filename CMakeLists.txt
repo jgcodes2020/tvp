@@ -17,7 +17,6 @@ conan_configure_packages(
   
   "avcpp/cci.20220301"
   "ogg/1.3.5"
-  ""
 )
 
 add_executable(tvp
