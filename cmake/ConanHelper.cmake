@@ -10,16 +10,26 @@ include("${CMAKE_BINARY_DIR}/conan.cmake")
 
 macro(conan_configure_install)
   conan_cmake_install(PATH_OR_REFERENCE .
-    BUILD missing
+    BUILD missing ${CCFG_OPT_FORCE_BUILD}
     SETTINGS ${conan_detected_settings}
     INSTALL_FOLDER "${CMAKE_BINARY_DIR}/CMakeFiles/conan_deps"
   )
 endmacro()
 
+# Configures a list of Conan packages.
+# PACKAGES - list of packages to include and also import
+# RESOLVE - list of packages to fix a version to, but not import
+# FORCE_BUILD - forces the listed packages to be built from source
 function(conan_configure_packages)
+  # Parse args
+  set(flags)
+  set(single_opt)
+  set(multi_opt PACKAGES RESOLVE FORCE_BUILD)
+  cmake_parse_arguments(PARSE_ARGV 0 CCFG_OPT "${flags}" "${single_opt}" "${multi_opt}")
+  
   # Conan deps
   conan_cmake_configure(
-    REQUIRES ${ARGV}
+    REQUIRES ${CCFG_OPT_PACKAGES} ${CCFG_OPT_RESOLVE}
     GENERATORS "cmake_find_package" "json"
   )
 
@@ -74,7 +84,7 @@ function(conan_configure_packages)
   endforeach()
   
   # Find the packages that we specified
-  foreach(pkg IN ITEMS ${ARGV})
+  foreach(pkg IN ITEMS ${CCFG_OPT_PACKAGES})
     string(REGEX REPLACE "\/.+$" "" package ${pkg})
     message(STATUS "Finding package ${package}")
 

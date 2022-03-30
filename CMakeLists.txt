@@ -11,12 +11,8 @@ list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 include(DefaultBuildType)
 include(ConanHelper)
 conan_configure_packages(
-  "base64/0.4.0"
-  "libdivide/5.0" 
-  "fmt/8.1.1"
-  
-  "avcpp/cci.20220301"
-  "ogg/1.3.5"
+  PACKAGES "base64/0.4.0" "libdivide/5.0" "fmt/8.1.1" "avcpp/cci.20220301"
+  RESOLVE "ogg/1.3.5"
 )
 
 add_executable(tvp
