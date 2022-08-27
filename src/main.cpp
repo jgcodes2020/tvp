@@ -157,7 +157,7 @@ int main(int argc, char* argv[]) {
     }
     av::VideoRescaler scaler(fw, fh, av::PixelFormat("gray"));
     av::VideoFrame frame2 = scaler.rescale(frame, av::throws());
-    term::sixel_encode(frame2, {.ncols = 16});
+    term::sixel_encode(frame2, {.ncols = 20});
     
     {
       auto now = hires_clock::now();
