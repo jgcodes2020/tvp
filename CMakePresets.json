@@ -1,0 +1,74 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "uses-vcpkg",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true
+      }
+    },
+    {
+      "name": "linux-ninja-multi",
+      "hidden": false,
+      "inherits": "uses-vcpkg",
+      "displayName": "Linux (Ninja Multi-Config)",
+      "generator": "Ninja Multi-Config",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "win32-vs-2022",
+      "hidden": false,
+      "inherits": "uses-vcpkg",
+      "displayName": "Windows (Visual Studio 2022)",
+      "generator": "Visual Studio 17 2022",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "linux-dbg",
+      "displayName": "Debug",
+      "configurePreset": "linux-ninja-multi",
+      "configuration": "Debug"
+    },
+    {
+      "name": "linux-rel",
+      "displayName": "Release",
+      "configurePreset": "linux-ninja-multi",
+      "configuration": "Release"
+    },
+    {
+      "name": "win32-dbg",
+      "displayName": "Debug",
+      "configurePreset": "win32-vs-2022",
+      "configuration": "Debug"
+    },
+    {
+      "name": "win32-rel",
+      "displayName": "Release",
+      "configurePreset": "win32-vs-2022",
+      "configuration": "Release"
+    }
+  ]
+}

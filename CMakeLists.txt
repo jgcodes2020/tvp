@@ -8,12 +8,23 @@ project(tvp
 set(CMAKE_EXPORT_COMPILE_COMMANDS yes)
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
+# vcpkg deps
 include(DefaultBuildType)
-include(ConanHelper)
-conan_configure_packages(
-  PACKAGES "base64/0.4.0" "libdivide/5.0" "fmt/8.1.1" "avcpp/cci.20220301"
-  RESOLVE "ogg/1.3.5"
+find_package(fmt REQUIRED)
+find_package(libdivide REQUIRED)
+
+# FetchContent deps
+include(FetchContent)
+FetchContent_Declare(avcpp
+  GIT_REPOSITORY https://github.com/h4tr3d/avcpp.git
+  GIT_TAG 12420c8d3810977f4771a79c039bc612d88378a7
 )
+FetchContent_GetProperties(avcpp)
+if (NOT avcpp_POPULATED)
+  FetchContent_Populate(avcpp)
+  add_subdirectory(${avcpp_SOURCE_DIR} ${avcpp_BINARY_DIR})
+endif()
+
 
 add_executable(tvp
   "src/main.cpp"
@@ -21,6 +32,7 @@ add_executable(tvp
   "src/term.hpp"
   "src/termutils.cpp"
 )
+
 target_compile_features(tvp PUBLIC cxx_std_20)
-target_link_libraries(tvp PUBLIC avcpp::avcpp fmt::fmt libdivide::libdivide)
+target_link_libraries(tvp PUBLIC avcpp fmt::fmt libdivide::libdivide)
 target_compile_options(tvp PUBLIC "-msse4.2")
