@@ -1,0 +1,61 @@
+#include "vdec.hpp"
+#include <libavutil/avutil.h>
+#include "codec.h"
+#include "codeccontext.h"
+#include "formatcontext.h"
+#include "frame.h"
+
+#include <filesystem>
+#include <ranges>
+#include <stdexcept>
+
+namespace fs = std::filesystem;
+
+namespace tvp {
+  struct video_decoder::impl {
+    impl(const fs::path& path) : m_fmt(), m_vdec(), m_vs(), m_vs_idx() {
+      m_fmt.openInput(path);
+      
+      // Find a video stream in the provided file
+      for (size_t i = 0; i < m_fmt.streamsCount(); i++) {
+        auto str = m_fmt.stream(i);
+        if (str.isVideo() && str.isValid()) {
+          m_vs_idx = i;
+          m_vs = str;
+          break;
+        }
+      }
+      if (!m_vs.isValid()) {
+        throw std::runtime_error("Provided file does not contain video data");
+      }
+      
+      // Find the codec
+      {
+        m_vdec = av::VideoDecoderContext(m_vs);
+        
+        av::Codec codec = av::findDecodingCodec(m_vdec.raw()->codec_id);
+        m_vdec.setCodec(codec);
+        m_vdec.setRefCountedFrames(true);
+        
+        m_vdec.open({{"threads", "1"}}, av::Codec());
+      }
+    }
+    
+    av::VideoFrame next() {
+      av::Packet pk;
+      // read packets until a video packet is found
+      bool is_eof = true;
+      while ((pk = m_fmt.readPacket())) {
+        if (pk.streamIndex() == m_vs_idx)
+          break;
+      }
+      
+      return m_vdec.decode(pk);
+    }
+    
+    av::FormatContext m_fmt;
+    av::VideoDecoderContext m_vdec;
+    av::Stream m_vs;
+    size_t m_vs_idx;
+  };
+}

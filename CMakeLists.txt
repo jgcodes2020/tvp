@@ -18,4 +18,5 @@ FetchContent_MakeAvailable(avcpp)
 add_executable(tvp
   "src/main.cpp"
 )
+target_compile_features(tvp PRIVATE cxx_std_20)
 target_link_libraries(tvp PRIVATE avcpp::avcpp)
