@@ -14,14 +14,16 @@
 
 namespace tvp {
   class video_decoder {
-  public:
-    video_decoder(std::filesystem::path path);
-    
-    av::VideoFrame next();
-    
   private:
     struct impl;
-    std::unique_ptr<impl> p_impl;
+    impl* p_impl;
+    
+  public:
+    video_decoder(const std::filesystem::path& path);
+    
+    ~video_decoder();
+    
+    av::VideoFrame next();
   };
 }
 #endif
