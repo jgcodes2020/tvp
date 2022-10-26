@@ -48,11 +48,9 @@ namespace tvp {
       av::Packet pk;
       av::VideoFrame res;
       // read packets until a video packet is found
-      fmt::print("Video stream: {}\n", m_vs_idx);
       do {
         bool is_eof = true;
         while ((pk = m_fmt.readPacket())) {
-          fmt::print("Reading packet from stream {}\n", pk.streamIndex());
           if (pk.streamIndex() == m_vs_idx) {
             is_eof = false;
             break;
@@ -64,7 +62,6 @@ namespace tvp {
         }
         res = m_vdec.decode(pk);
       } while (res.isNull() || !res.isComplete());
-      fmt::print("Frame size: {}x{}\n", res.width(), res.height());
       return res;
     }
     
