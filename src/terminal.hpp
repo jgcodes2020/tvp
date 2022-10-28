@@ -35,6 +35,12 @@ namespace tvp {
     return {sx, sy};
   }
   
+  inline void pause() {
+    auto tm = set_stty(true);
+    getchar();
+    restore_stty(tm);
+  }
+  
   
 }
 #endif

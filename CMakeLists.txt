@@ -20,11 +20,12 @@ FetchContent_MakeAvailable(avcpp)
 find_package(fmt REQUIRED)
 
 add_executable(tvp
+  "src/dither_base.cpp"
   "src/main.cpp"
   "src/ppm.cpp"
   "src/vdec.cpp"
+  "src/dither.hpp"
   "src/ppm.hpp"
-  "src/types.hpp"
   "src/vdec.hpp"
 )
 target_compile_features(tvp PRIVATE cxx_std_20)
