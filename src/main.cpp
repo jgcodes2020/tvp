@@ -17,7 +17,7 @@ void test_quantize() {
   uint32_t hex;
   std::cin >> std::hex >> hex;
   
-  uint32_t out = tvp::truncate_colour_xterm(hex);
+  uint32_t out = tvp::truncate_xterm(hex);
   uint32_t outc = tvp::xterm_256[out];
   
   std::cout << out << " " << std::hex << outc << '\n';
@@ -48,8 +48,8 @@ int main(int argc, char* argv[]) {
     
     auto tsize = tvp::term_get_size();
     
-    frame2 = tvp::dither_frame(frame);
-    tvp::encode_ppm(frame2, "test.ppm");
-    tvp::pause();
+    // frame2 = tvp::dither_frame(frame);
+    // tvp::encode_ppm(frame2, "test.ppm");
+    // tvp::pause();
   }
 }

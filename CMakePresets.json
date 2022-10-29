@@ -1,0 +1,61 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Default (Ninja, single-config)",
+      "description": "Default build using Ninja",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true
+      },
+      "condition": {
+        "type": "notEquals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "win-vcpkg",
+      "displayName": "Visual Studio + vcpkg",
+      "description": "Windows build using VS2022 and vcpkg",
+      "binaryDir": "${sourceDir}/build-vs",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "C:\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static"
+      },
+      "generator": "Visual Studio 17 2022",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "default",
+      "displayName": "Default",
+      "configurePreset": "default"
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug",
+      "configuration": "Debug",
+      "configurePreset": "win-vcpkg"
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "configuration": "Release",
+      "configurePreset": "win-vcpkg"
+    }
+  ]
+}

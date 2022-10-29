@@ -6,21 +6,17 @@ project(tvp
   DESCRIPTION "A video player. In your terminal. Pretty ridiculous, if I do say so."
 )
 
-include(FetchContent)
-FetchContent_Declare(
-  avcpp
-  GIT_REPOSITORY https://github.com/h4tr3d/avcpp.git
-  GIT_TAG 12420c8d3810977f4771a79c039bc612d88378a7
-  GIT_SUBMODULES ""
-)
-set(AV_BUILD_STATIC OFF)
-set(AV_BUILD_EXAMPLES OFF)
-FetchContent_MakeAvailable(avcpp)
-
+find_package(PkgConfig REQUIRED)
 find_package(fmt REQUIRED)
+pkg_check_modules(libav REQUIRED IMPORTED_TARGET
+  libavformat
+  libavcodec
+  libavutil
+  libswscale
+)
 
 add_executable(tvp
-  "src/dither_base.cpp"
+  "src/dither.cpp"
   "src/main.cpp"
   "src/ppm.cpp"
   "src/vdec.cpp"
@@ -29,4 +25,5 @@ add_executable(tvp
   "src/vdec.hpp"
 )
 target_compile_features(tvp PRIVATE cxx_std_20)
-target_link_libraries(tvp PRIVATE avcpp::avcpp fmt::fmt)
+target_compile_options(tvp PRIVATE -Wno-deprecated-declarations)
+target_link_libraries(tvp PRIVATE PkgConfig::libav fmt::fmt)
