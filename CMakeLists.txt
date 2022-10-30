@@ -16,14 +16,14 @@ pkg_check_modules(libav REQUIRED IMPORTED_TARGET
 )
 
 add_executable(tvp
-  "src/dither.cpp"
   "src/main.cpp"
-  "src/ppm.cpp"
-  "src/vdec.cpp"
-  "src/dither.hpp"
-  "src/ppm.hpp"
+  
   "src/vdec.hpp"
+  "src/vdec.cpp"
+  
+  "src/ffmpeg.hpp"
+  
+  "src/terminal.hpp"
 )
 target_compile_features(tvp PRIVATE cxx_std_20)
-target_compile_options(tvp PRIVATE -Wno-deprecated-declarations)
 target_link_libraries(tvp PRIVATE PkgConfig::libav fmt::fmt)
