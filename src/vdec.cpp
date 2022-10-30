@@ -32,40 +32,27 @@ namespace tvp {
   }
 
   const AVFrame* video_decoder::next() {
+    m_counter++;
     int res;
     
-    m_counter++;
-    // Clean up the previous frame
     if (m_frame->buf[0] != nullptr)
       av_frame_unref(m_frame);
-    
-    // Try reading a frame
-    res = avcodec_receive_frame(m_codec_ctx, m_frame);
-    if (res == 0)
-      return m_frame;
-    else if (res != AVERROR(EAGAIN))
-      throw av::av_error(res);
-    
-    // Clean up the previous packet
-    if (m_packet->data != nullptr)
+    if (m_packet->buf != nullptr)
       av_packet_unref(m_packet);
     
-    // Read a packet
-    res = av_read_frame(m_format_ctx, m_packet);
-    if (res == 0) {
-      AV_CHECKED(avcodec_send_packet(m_codec_ctx, m_packet));
-    }
-    else if (res == AVERROR_EOF) {
-      // Flush the decoder
-      res = avcodec_send_packet(m_codec_ctx, nullptr);
-      // Flush returns EOF on hitting EOF
+    while (true) {
+      res = av_read_frame(m_format_ctx, m_packet);
       if (res == AVERROR_EOF)
         return nullptr;
+      else if (res < 0)
+        throw av::av_error(res);  
+      
+      if (m_packet->stream_index == m_index)
+        break;
     }
     
-    // Try reading a frame again
-    AV_CHECKED_THEN(avcodec_receive_frame(m_codec_ctx, m_frame)) {
-      return m_frame;
-    }
+    AV_CHECKED(avcodec_send_packet(m_codec_ctx, m_packet));
+    AV_CHECKED(avcodec_receive_frame(m_codec_ctx, m_frame));
+    return m_frame;
   }
 }  // namespace tvp
