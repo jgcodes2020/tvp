@@ -1,5 +1,34 @@
 // Ordered dithering kernel
 
-kernel void ordered_dither(global const int* src, global int* dst) {
+typedef struct {
+  uchar3 a, b;
+} colour_pair;
+
+colour_pair closest_xterm_colours(int3 col) {
+  // colour components from xterm colour cube
+
+  // rounded down (floor)
+  int3 xtcc_fc = (col < 95) ? (int3) 0 : (col - 55) / 40;
+  // rounded up (ceiling)
+  int3 xtcc_cc = (col < 95) ? (int3) 1 : (col - 16) / 40;
+  // rounded to nearest
+  int3 xtcc_nc = (col < 48) ? (int3) 0 : (col - 35) / 40;
+  // rounded away from nearest
+  int3 xtcc_ac = (xtcc_nc == xtcc_fc)? xtcc_cc : xtcc_fc;
+
+  // xterm grayscale colour
+  int avg      = ((int3) col.x + (int3) col.y + (int3) col.z) / 3;
+  int gs_index = (avg > 238) ? 23 : (avg - 8) / 10;
   
+  // candidate colours from
+  int3 cnd1 = (xtcc_nc == 0) ? (int3) 0 : 40 * xtcc_nc + 55;
+  // find component to inverse round
+  int3 ir_cnd1  = (xtcc_ac == 0) ? (int3) 0 : 40 * xtcc_ac + 55;
+  int3 ir_diffs = abs_diff(col, ir_cnd1);
+  
+
+  int3 cnd3 = (int3) (gs_index * 10 + 8);
+  int3 cnd4 = (gs_index == 23) ? gs1 : gs1 + 10;
 }
+
+kernel void ordered_dither(global const uchar3* src, global uchar* dst) {}
