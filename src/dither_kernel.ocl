@@ -1,0 +1,5 @@
+// Ordered dithering kernel
+
+kernel void ordered_dither(global const int* src, global int* dst) {
+  
+}

@@ -6,8 +6,13 @@ project(tvp
   DESCRIPTION "A video player. In your terminal. Pretty ridiculous, if I do say so."
 )
 
-find_package(PkgConfig REQUIRED)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
+include(CMakeRC)
+
 find_package(fmt REQUIRED)
+find_package(OpenCL REQUIRED)
+
+find_package(PkgConfig REQUIRED)
 pkg_check_modules(libav REQUIRED IMPORTED_TARGET
   libavformat
   libavcodec
@@ -17,13 +22,15 @@ pkg_check_modules(libav REQUIRED IMPORTED_TARGET
 
 add_executable(tvp
   "src/main.cpp"
-  
   "src/vdec.hpp"
   "src/vdec.cpp"
-  
+  "src/dither.hpp"
+  "src/dither.cpp"
   "src/ffmpeg.hpp"
-  
   "src/terminal.hpp"
 )
+cmrc_add_resource_library(tvp-resources NAMESPACE tvp WHENCE "src"
+  "src/dither_kernel.ocl"
+)
 target_compile_features(tvp PRIVATE cxx_std_20)
-target_link_libraries(tvp PRIVATE PkgConfig::libav fmt::fmt)
+target_link_libraries(tvp PRIVATE PkgConfig::libav fmt::fmt OpenCL::OpenCL tvp-resources)
