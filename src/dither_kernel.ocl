@@ -1,34 +1,38 @@
-// Ordered dithering kernel
+int dither_table[4][4] = {
+  { 0,  8,  2,  10 },
+  { 12, 4,  14, 6  },
+  { 3,  11, 1,  9  },
+  { 15, 7,  13, 5  },
+};
 
-typedef struct {
-  uchar3 a, b;
-} colour_pair;
-
-colour_pair closest_xterm_colours(int3 col) {
-  // colour components from xterm colour cube
-
-  // rounded down (floor)
-  int3 xtcc_fc = (col < 95) ? (int3) 0 : (col - 55) / 40;
-  // rounded up (ceiling)
-  int3 xtcc_cc = (col < 95) ? (int3) 1 : (col - 16) / 40;
-  // rounded to nearest
-  int3 xtcc_nc = (col < 48) ? (int3) 0 : (col - 35) / 40;
-  // rounded away from nearest
-  int3 xtcc_ac = (xtcc_nc == xtcc_fc)? xtcc_cc : xtcc_fc;
-
-  // xterm grayscale colour
-  int avg      = ((int3) col.x + (int3) col.y + (int3) col.z) / 3;
-  int gs_index = (avg > 238) ? 23 : (avg - 8) / 10;
-  
-  // candidate colours from
-  int3 cnd1 = (xtcc_nc == 0) ? (int3) 0 : 40 * xtcc_nc + 55;
-  // find component to inverse round
-  int3 ir_cnd1  = (xtcc_ac == 0) ? (int3) 0 : 40 * xtcc_ac + 55;
-  int3 ir_diffs = abs_diff(col, ir_cnd1);
-  
-
-  int3 cnd3 = (int3) (gs_index * 10 + 8);
-  int3 cnd4 = (gs_index == 23) ? gs1 : gs1 + 10;
+int dist_sq(int3 x) {
+  int3 sq = x * x;
+  return sq.x + sq.y + sq.z;
 }
 
-kernel void ordered_dither(global const uchar3* src, global uchar* dst) {}
+// Ordered dithering kernel
+uchar dither_calc(uchar3 col_in, int x, int y) {
+  // calculate thresholds
+  int tval = dither_table[y & 0x03][x & 0x03];
+  const int thr_clo = (95 * tval) >> 4;
+  const int thr_chi = (40 * tval) >> 4;
+  const int thr_gs = (10 * tval) >> 4;
+  
+  int3 col = convert_int3(col_in);
+  // find colour components
+  int3 cube_crgb = (col < thr_clo)? 0 : (col - (15 + thr_chi)) / 40;
+  int3 colc = (cube_crgb == 0)? (int3) 0 : (cube_crgb * 40 + 55);
+  
+  // find grayscale
+  int avg = (col_in.x + col_in.y + col_in.z) / 3;
+  int gs_idx = (avg > 238)? 23 : (avg + 2 - thr_gs) / 10;
+  int3 gsc = (int3) (gs_idx * 10 + 8);
+  
+  // pick the closer colour
+  return (dist_sq(gsc) < dist_sq(colc))? (uchar) (gs_idx + 232) : (uchar) (cube_crgb.x * 36 + cube_crgb.y * 6 + cube_crgb.z + 16);
+}
+
+kernel void ordered_dither(global const uchar3* src, global uchar* dst) {
+  size_t id = get_global_id(1) * get_global_size(0) + get_global_id(0);
+  dst[id] = dither_calc(src[id], get_global_id(0), get_global_id(1));
+}
