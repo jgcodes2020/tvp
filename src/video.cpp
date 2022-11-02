@@ -1,4 +1,4 @@
-#include "vdec.hpp"
+#include "video.hpp"
 #include "ffmpeg.hpp"
 
 namespace {

@@ -38,6 +38,7 @@ namespace tvp {
   inline void pause() {
     auto tm = set_stty(true);
     getchar();
+    putchar('\n');
     restore_stty(tm);
   }
   

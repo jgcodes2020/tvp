@@ -5,6 +5,7 @@ extern "C" {
   #include <libavformat/avformat.h>
   #include <libavcodec/avcodec.h>
   #include <libavutil/avutil.h>
+  #include <libavutil/imgutils.h>
   #include <libswscale/swscale.h>
 }
 
@@ -35,6 +36,20 @@ namespace av {
     if (in == nullptr)
       throw av::av_error(AVERROR(ENOMEM));
     return in;
+  }
+  
+  inline void frame_realloc_buffers(AVFrame* frame, size_t width, size_t height, AVPixelFormat fmt = AV_PIX_FMT_NONE) {
+    AVPixelFormat real_fmt = (fmt == AV_PIX_FMT_NONE)? (AVPixelFormat) frame->format : fmt;
+    
+    if (frame->width != width || frame->height != height || frame->format != real_fmt) {
+      av_frame_unref(frame);
+      
+      frame->width = width;
+      frame->height = height;
+      frame->format = real_fmt;
+      
+      av_frame_get_buffer(frame, 0);
+    }
   }
 }
 

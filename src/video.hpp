@@ -71,5 +71,42 @@ namespace tvp {
     size_t m_index;
     size_t m_counter;
   };
+  
+  class video_scaler {
+  public:
+    video_scaler() : m_sws(nullptr) {}
+    
+    video_scaler(const video_scaler&) = delete;
+    video_scaler& operator=(const video_scaler&) = delete;
+    
+    video_scaler(video_scaler&& that) :
+      m_sws(that.m_sws) {
+      that.m_sws = nullptr;
+    }
+    video_scaler& operator=(video_scaler&& that) {
+      m_sws = that.m_sws;
+      that.m_sws = nullptr;
+      
+      return *this;
+    }
+    
+    ~video_scaler() {
+      if (m_sws != nullptr)
+        sws_freeContext(m_sws);
+      m_sws = nullptr;
+    }
+    
+    void rescale(const AVFrame* src, AVFrame* dst) {
+      m_sws = sws_getCachedContext(m_sws, 
+        src->width, src->height, (AVPixelFormat) src->format, 
+        dst->width, dst->height, (AVPixelFormat) dst->format,
+        SWS_BILINEAR, nullptr, nullptr, nullptr
+      );
+      
+      AV_CHECKED(sws_scale_frame(m_sws, dst, src));
+    }
+  private:
+    SwsContext* m_sws;
+  };
 }
 #endif
