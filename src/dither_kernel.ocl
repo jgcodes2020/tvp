@@ -1,4 +1,4 @@
-int dither_table[4][4] = {
+constant int dither_table[4][4] = {
   { 0,  8,  2,  10 },
   { 12, 4,  14, 6  },
   { 3,  11, 1,  9  },
@@ -35,4 +35,6 @@ uchar dither_calc(uchar3 col_in, int x, int y) {
 kernel void ordered_dither(global const uchar3* src, global uchar* dst) {
   size_t id = get_global_id(1) * get_global_size(0) + get_global_id(0);
   dst[id] = dither_calc(src[id], get_global_id(0), get_global_id(1));
+  // if (get_global_id(0) == 360)
+  //   printf("%v3hhu -> %hhu\n", src[id], dst[id]);
 }

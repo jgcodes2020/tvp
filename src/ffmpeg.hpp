@@ -11,8 +11,8 @@ extern "C" {
 
 #define AV_CHECK(cond) if (int res = (cond); res < 0)
 #define AV_CHECKED(cond) \
-  AV_CHECK(cond) throw ::av::av_error(res);
-#define AV_CHECKED_THEN(cond) AV_CHECK(cond) throw ::av::av_error(res); else
+  AV_CHECK(cond) throw ::av::av_error(res)
+#define AV_CHECKED_THEN(cond) AV_CHECKED(cond); else
 
 namespace av {
   class av_error final : public std::exception {

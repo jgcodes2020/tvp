@@ -34,7 +34,7 @@ int main(int argc, char* argv[]) {
     puts("rescale to RGB0");
     tvp::dither(frame1, frame2);
     puts("dither");
-    scl1.rescale(frame0, frame3);
+    scl1.rescale(frame2, frame3);
     puts("depalettize to RGB24");
     tvp::save_ppm("out.ppm", frame3);
     puts("write PPM");

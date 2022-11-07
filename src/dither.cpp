@@ -1,9 +1,11 @@
 #include "dither.hpp"
+#include <fmt/core.h>
 #include <optional>
 #include <stdexcept>
 #include <vector>
 
 #define CL_HPP_TARGET_OPENCL_VERSION 210
+#define CL_HPP_ENABLE_EXCEPTIONS
 #define CL_TARGET_OPENCL_VERSION 210
 #include <CL/cl.h>
 #include <CL/opencl.hpp>
@@ -47,6 +49,8 @@ namespace {
   cl::Program dither_kernel() {
     static std::optional<cl::Program> res;
     [[unlikely]] if (!res) {
+      int rc = 0;
+      
       auto fs   = cmrc::tvp::get_filesystem();
       auto file = fs.open("dither_kernel.ocl");
 
@@ -56,11 +60,19 @@ namespace {
 
       // C API call
       cl_program c_obj = clCreateProgramWithSource(
-        cl_globals().context.get(), 1, src_ptrs, src_sizes, nullptr);
-      if (c_obj == nullptr) {
-        throw std::runtime_error("OpenCL error");
+        cl_globals().context.get(), 1, src_ptrs, src_sizes, &rc);
+      if (rc != CL_SUCCESS) {
+        throw std::runtime_error(fmt::format("OpenCL error (code {})", rc));
       }
       res.emplace(c_obj);
+      
+      try {
+        res->build();
+      }
+      catch (const cl::BuildError& err) {
+        fmt::print("OpenCL build error:\n{}\n", err.getBuildLog().at(0).second);
+        std::abort();
+      }
     }
     return *res;
   }
@@ -126,18 +138,20 @@ namespace tvp {
     if (dst->format != AV_PIX_FMT_PAL8)
       throw std::invalid_argument("dst format != PAL8");
 
+    cl::Kernel kernel {dither_kernel(), "ordered_dither"};
     cl::Buffer src_buf(get_context(), CL_MEM_READ_ONLY, src->linesize[0] * src->height);
     cl::Buffer dst_buf(get_context(), CL_MEM_READ_WRITE, dst->linesize[0] * dst->height);
-
+    
     get_queue().enqueueWriteBuffer(
       src_buf, CL_TRUE, 0, src->linesize[0] * src->height, src->data[0]);
 
-    cl::Kernel kernel {dither_kernel(), "ordered_dither"};
     kernel.setArg(0, src_buf);
     kernel.setArg(1, dst_buf);
 
     get_queue().enqueueNDRangeKernel(
       kernel, cl::NullRange, cl::NDRange(src->width, src->height));
+    get_queue().finish();
+    
     get_queue().enqueueReadBuffer(
       dst_buf, CL_TRUE, 0, dst->linesize[0] * dst->height, dst->data[0]);
   }
