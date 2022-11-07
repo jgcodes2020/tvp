@@ -1,5 +1,5 @@
-#ifndef TVP_TERMINAL_HPP
-#define TVP_TERMINAL_HPP
+#ifndef TVP_TERMINAL_HPP_INCLUDED
+#define TVP_TERMINAL_HPP_INCLUDED
 
 #include <termios.h>
 #include <sys/ioctl.h>

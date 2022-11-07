@@ -1,5 +1,5 @@
-#ifndef TVP_VDEC_HPP
-#define TVP_VDEC_HPP
+#ifndef TVP_VDEC_HPP_INCLUDED
+#define TVP_VDEC_HPP_INCLUDED
 
 #include "ffmpeg.hpp"
 

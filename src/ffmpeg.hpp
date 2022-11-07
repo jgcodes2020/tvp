@@ -1,6 +1,7 @@
 #ifndef TVP_FFMPEG_HPP_INCLUDED
 #define TVP_FFMPEG_HPP_INCLUDED
 #include <exception>
+#include <memory>
 extern "C" {
   #include <libavformat/avformat.h>
   #include <libavcodec/avcodec.h>
@@ -51,6 +52,19 @@ namespace av {
       av_frame_get_buffer(frame, 0);
     }
   }
+  
+  template <class T>
+  struct ffmpeg_delete;
+  
+  template <>
+  struct ffmpeg_delete<AVFrame> {
+    void operator()(AVFrame* frame) {
+      av_frame_free(&frame);
+    }
+  };
+  
+  template <class T>
+  using ff_ptr = std::unique_ptr<T, ffmpeg_delete<T>>;
 }
 
 #endif
