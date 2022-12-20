@@ -11,7 +11,7 @@ int dist_sq(int3 x) {
 }
 
 // Ordered dithering kernel
-uchar dither_calc(uchar3 col_in, int x, int y) {
+inline uchar dither_calc(uchar3 col_in, int x, int y) {
   // calculate thresholds
   int tval = dither_table[y & 0x03][x & 0x03];
   const int thr_clo = (95 * tval) >> 4;
@@ -29,12 +29,20 @@ uchar dither_calc(uchar3 col_in, int x, int y) {
   int3 gsc = (int3) (gs_idx * 10 + 8);
   
   // pick the closer colour
-  return (dist_sq(gsc) < dist_sq(colc))? (uchar) (gs_idx + 232) : (uchar) (cube_crgb.x * 36 + cube_crgb.y * 6 + cube_crgb.z + 16);
+  int gs_dist = dist_sq(col - gsc);
+  int col_dist = dist_sq(col - colc);
+  
+  // first check is necessary to increase colour resolution
+  return (gs_dist < 400 && gs_dist < col_dist)? 
+    (uchar) (gs_idx + 232) : 
+    (uchar) (cube_crgb.x * 36 + cube_crgb.y * 6 + cube_crgb.z + 16);
 }
 
-kernel void ordered_dither(global const uchar3* src, global uchar* dst) {
+kernel void ordered_dither(global const uchar* src, global uchar* dst) {
   size_t id = get_global_id(1) * get_global_size(0) + get_global_id(0);
-  dst[id] = dither_calc(src[id], get_global_id(0), get_global_id(1));
+  
+  uchar3 src_vec = vload3(id, src);
+  dst[id] = dither_calc(src_vec, get_global_id(0), get_global_id(1));
   // if (get_global_id(0) == 360)
   //   printf("%v3hhu -> %hhu\n", src[id], dst[id]);
 }

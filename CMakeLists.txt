@@ -33,7 +33,7 @@ add_executable(tvp
   "src/terminal.hpp"
 )
 cmrc_add_resource_library(tvp-resources NAMESPACE tvp WHENCE "src"
-  "src/dither_kernel.ocl"
+  "src/dither.ocl"
 )
 target_compile_features(tvp PRIVATE cxx_std_20)
 target_link_libraries(tvp PRIVATE 

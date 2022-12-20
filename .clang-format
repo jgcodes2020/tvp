@@ -4,7 +4,7 @@ BasedOnStyle: Chromium
 
 AccessModifierOffset: -2
 AlignAfterOpenBracket: AlwaysBreak
-AlignConsecutiveAssignments: Consecutive
+AlignConsecutiveAssignments: None
 AlignEscapedNewlines: Left
 AlignOperands: DontAlign
 

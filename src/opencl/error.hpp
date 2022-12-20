@@ -1,11 +1,9 @@
-#ifndef TVP_OPENCL_HPP
-#define TVP_OPENCL_HPP
+#ifndef TVP_OPENCL_ERROR_HPP
+#define TVP_OPENCL_ERROR_HPP
 
-#include <fmt/core.h>
-#include <atomic>
-#include <stdexcept>
 #include <system_error>
-#include <type_traits>
+#include <cstdint>
+
 #define CL_TARGET_OPENCL_VERSION 210
 #include <CL/cl.h>
 
@@ -85,6 +83,7 @@ namespace ocl {
     invalid_spec_id = -71,
     max_size_restriction_exceeded = -72
   };
+  
   
   namespace details {
     class ocl_category : public std::error_category {
@@ -237,17 +236,6 @@ namespace ocl {
     static details::ocl_category category;
     return category;
   }
-  
-  class platform {
-    
-  };
-}  // namespace ocl
-
-namespace std {
-  template<>
-  struct is_error_condition_enum<ocl::ocl_errc> : std::true_type {};
-  template<>
-  struct is_error_code_enum<ocl::ocl_errc> : std::true_type {};
 }
 
 #endif

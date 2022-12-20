@@ -1,5 +1,6 @@
 #include "dither.hpp"
 #include <fmt/core.h>
+#include <libavutil/imgutils.h>
 #include <optional>
 #include <stdexcept>
 #include <vector>
@@ -14,69 +15,6 @@
 CMRC_DECLARE(tvp);
 
 namespace {
-  decltype(auto) cl_globals() {
-    struct out_value {
-      cl::Device device;
-      cl::Context context;
-      cl::CommandQueue queue;
-    };
-
-    static std::optional<out_value> res {};
-    [[unlikely]] if (!res) {
-      auto plat = cl::Platform::getDefault();
-
-      std::vector<cl::Device> devices;
-      plat.getDevices(CL_DEVICE_TYPE_ALL, &devices);
-      if (devices.size() == 0)
-        throw std::runtime_error("No suitable OpenCL devices found");
-
-      res =
-        out_value {.device = devices[0], .context = cl::Context(devices[0])};
-      res->queue = cl::CommandQueue(res->context, res->device);
-    }
-
-    return (out_value&) *res;
-  }
-
-  cl::Context& get_context() {
-    return cl_globals().context;
-  }
-
-  cl::CommandQueue& get_queue() {
-    return cl_globals().queue;
-  }
-
-  cl::Program dither_kernel() {
-    static std::optional<cl::Program> res;
-    [[unlikely]] if (!res) {
-      int rc = 0;
-      
-      auto fs   = cmrc::tvp::get_filesystem();
-      auto file = fs.open("dither_kernel.ocl");
-
-      // Arrays for C API call
-      const char* src_ptrs[1] {file.begin()};
-      size_t src_sizes[1] {file.size()};
-
-      // C API call
-      cl_program c_obj = clCreateProgramWithSource(
-        cl_globals().context.get(), 1, src_ptrs, src_sizes, &rc);
-      if (rc != CL_SUCCESS) {
-        throw std::runtime_error(fmt::format("OpenCL error (code {})", rc));
-      }
-      res.emplace(c_obj);
-      
-      try {
-        res->build();
-      }
-      catch (const cl::BuildError& err) {
-        fmt::print("OpenCL build error:\n{}\n", err.getBuildLog().at(0).second);
-        std::abort();
-      }
-    }
-    return *res;
-  }
-
   // Palette data in packed 0xAARRGGBB
   const std::array<uint32_t, 256> xterm_palette = {
     0xFF000000, 0xFF800000, 0xFF008000, 0xFF808000, 0xFF000080, 0xFF800080,
@@ -129,30 +67,34 @@ namespace tvp {
   void init_palette(AVFrame* dst) {
     if (dst->format != AV_PIX_FMT_PAL8)
       throw std::invalid_argument("dst format != PAL8");
-    memcpy(dst->buf[1]->data, xterm_palette.data(), sizeof(xterm_palette));
+    memcpy(dst->data[1], xterm_palette.data(), sizeof(xterm_palette));
   }
 
-  void dither(const AVFrame* src, AVFrame* dst) {
-    if (src->format != AV_PIX_FMT_RGB0)
-      throw std::invalid_argument("src format != RGB0");
-    if (dst->format != AV_PIX_FMT_PAL8)
-      throw std::invalid_argument("dst format != PAL8");
-
-    cl::Kernel kernel {dither_kernel(), "ordered_dither"};
-    cl::Buffer src_buf(get_context(), CL_MEM_READ_ONLY, src->linesize[0] * src->height);
-    cl::Buffer dst_buf(get_context(), CL_MEM_READ_WRITE, dst->linesize[0] * dst->height);
+  void dither_context::dither(const AVFrame* src, AVFrame* dst) {
+    if (src->format != AV_PIX_FMT_RGB24) {
+      throw new std::invalid_argument("source format != RGB24");
+    }
+    if (dst->format != AV_PIX_FMT_PAL8) {
+      throw new std::invalid_argument("destination format != PAL8");
+    }
+    if (src->width != dst->width || src->height != dst->height) {
+      throw new std::invalid_argument("src size != dst size");
+    }
     
-    get_queue().enqueueWriteBuffer(
-      src_buf, CL_TRUE, 0, src->linesize[0] * src->height, src->data[0]);
-
-    kernel.setArg(0, src_buf);
-    kernel.setArg(1, dst_buf);
-
-    get_queue().enqueueNDRangeKernel(
-      kernel, cl::NullRange, cl::NDRange(src->width, src->height));
-    get_queue().finish();
+    size_t src_size = src->linesize[0] * src->height;
+    size_t dst_size = dst->linesize[0] * dst->height;
     
-    get_queue().enqueueReadBuffer(
-      dst_buf, CL_TRUE, 0, dst->linesize[0] * dst->height, dst->data[0]);
+    cl::Buffer src_buf(m_ctx, CL_MEM_READ_WRITE, src_size);
+    cl::Buffer dst_buf(m_ctx, CL_MEM_READ_WRITE, dst_size);
+    
+    m_cq.enqueueWriteBuffer(src_buf, CL_TRUE, 0, src_size, src->data[0]);
+    
+    m_knl.setArg(0, src_buf);
+    m_knl.setArg(1, dst_buf);
+    m_cq.enqueueNDRangeKernel(m_knl, cl::NullRange, cl::NDRange(src->width, src->height));
+    
+    m_cq.enqueueReadBuffer(dst_buf, CL_TRUE, 0, dst_size, dst->data[0]);
+    
+    m_cq.finish();
   }
 }  // namespace tvp
