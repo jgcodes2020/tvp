@@ -1,4 +1,0 @@
-
-kernel void sixel_encode(global const uchar* input, global const uchar* data_out, global const uint* data_len) {
-  
-}

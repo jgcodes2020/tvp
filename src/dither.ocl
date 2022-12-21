@@ -39,10 +39,8 @@ inline uchar dither_calc(uchar3 col_in, int x, int y) {
 }
 
 kernel void ordered_dither(global const uchar* src, global uchar* dst) {
-  size_t id = get_global_id(1) * get_global_size(0) + get_global_id(0);
+  size_t id = get_global_linear_id();
   
   uchar3 src_vec = vload3(id, src);
   dst[id] = dither_calc(src_vec, get_global_id(0), get_global_id(1));
-  // if (get_global_id(0) == 360)
-  //   printf("%v3hhu -> %hhu\n", src[id], dst[id]);
 }

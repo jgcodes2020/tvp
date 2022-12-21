@@ -1,4 +1,4 @@
-#include "dither.hpp"
+#include "opencl.hpp"
 #include <fmt/core.h>
 #include <libavutil/imgutils.h>
 #include <optional>
@@ -69,6 +69,14 @@ namespace tvp {
       throw std::invalid_argument("dst format != PAL8");
     memcpy(dst->data[1], xterm_palette.data(), sizeof(xterm_palette));
   }
+  
+  ocl_globals::ocl_globals() :
+    plat(cl::Platform::getDefault()),
+    dev([this]() {
+      std::vector<cl::Device> devs;
+      plat.getDevices(CL_DEVICE_TYPE_GPU, &devs);
+      return devs.at(0);
+    }()) {}
 
   void dither_context::dither(const AVFrame* src, AVFrame* dst) {
     if (src->format != AV_PIX_FMT_RGB24) {
