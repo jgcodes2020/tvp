@@ -1,4 +1,4 @@
-#include "dither.hpp"
+// #include "opencl.hpp"
 #include "ppm.hpp"
 #include "terminal.hpp"
 #include "video.hpp"
@@ -20,6 +20,7 @@ int main(int argc, char* argv[]) {
   //   return 1;
   // }
   
+  #if 0
   if (argc != 2) {
     return 2;
   }
@@ -54,4 +55,5 @@ int main(int argc, char* argv[]) {
     puts("write PPM");
     tvp::pause();
   }
+  #endif
 }

@@ -10,7 +10,6 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 include(CMakeRC)
 
 find_package(fmt REQUIRED)
-find_package(OpenCL REQUIRED)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(libav REQUIRED IMPORTED_TARGET
@@ -19,16 +18,11 @@ pkg_check_modules(libav REQUIRED IMPORTED_TARGET
   libavutil
   libswscale
 )
-pkg_check_modules(ocl_icd REQUIRED IMPORTED_TARGET
-  ocl-icd
-)
 
 add_executable(tvp
   "src/main.cpp"
   "src/video.hpp"
   "src/video.cpp"
-  "src/dither.hpp"
-  "src/dither.cpp"
   "src/ffmpeg.hpp"
   "src/terminal.hpp"
 )
@@ -38,8 +32,6 @@ cmrc_add_resource_library(tvp-resources NAMESPACE tvp WHENCE "src"
 target_compile_features(tvp PRIVATE cxx_std_20)
 target_link_libraries(tvp PRIVATE 
   PkgConfig::libav 
-  fmt::fmt 
-  OpenCL::OpenCL 
-  PkgConfig::ocl_icd
+  fmt::fmt
   tvp-resources
 )
