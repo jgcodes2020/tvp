@@ -10,6 +10,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 include(CMakeRC)
 
 find_package(fmt REQUIRED)
+find_package(Vulkan REQUIRED)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(libav REQUIRED IMPORTED_TARGET
@@ -25,13 +26,14 @@ add_executable(tvp
   "src/video.cpp"
   "src/ffmpeg.hpp"
   "src/terminal.hpp"
+  "src/vkcomp/vkcomp.cpp"
+  "src/vkcomp/vkcomp.hpp"
 )
-cmrc_add_resource_library(tvp-resources NAMESPACE tvp WHENCE "src"
-  "src/dither.ocl"
-)
+
 target_compile_features(tvp PRIVATE cxx_std_20)
 target_link_libraries(tvp PRIVATE 
   PkgConfig::libav 
+  Vulkan::Vulkan
   fmt::fmt
   tvp-resources
 )

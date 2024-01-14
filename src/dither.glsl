@@ -3,34 +3,47 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int8 : enable
 #extension GL_EXT_shader_integer_mix : enable
 
-layout(std430, binding = 1) readonly buffer data_in {
+layout(std430, binding = 0) readonly buffer ISSB {
   uint width;
   uint ibuf[];
 };
 
-layout(std430, binding = 2) writeonly buffer data_out {
+layout(std430, binding = 1) writeonly buffer OSSB {
   uint8_t obuf[];
 };
 
 layout(local_size_x = 1, local_size_y = 1) in;
-
-/*
-const int dither_table[4][4] = {
-  { 0,  8,  2,  10 },
-  { 12, 4,  14, 6  },
-  { 3,  11, 1,  9  },
-  { 15, 7,  13, 5  },
-};
-*/
 
 int dist_sq(ivec3 x) {
   ivec3 sq = x * x;
   return sq.x + sq.y + sq.z;
 }
 
+int dither_lookup(uint x, uint y) {
+  uint lut_num = ((x & 0x03) << 2) | (y & 0x03);
+  switch (lut_num) {
+    case 0: return 0;
+    case 1: return 8;
+    case 2: return 2;
+    case 3: return 10;
+    case 4: return 12;
+    case 5: return 4;
+    case 6: return 14;
+    case 7: return 6;
+    case 8: return 3;
+    case 9: return 11;
+    case 10: return 1;
+    case 11: return 9;
+    case 12: return 15;
+    case 13: return 7;
+    case 14: return 13;
+    case 15: return 5;
+  }
+}
+
 uint8_t dither_calc(ivec3 col, uint x, uint y) {
   // calculate thresholds
-  int tval = 0;
+  int tval = dither_lookup(x, y);
   const int thr_clo = (95 * tval) >> 4;
   const int thr_chi = (40 * tval) >> 4;
   const int thr_gs = (10 * tval) >> 4;

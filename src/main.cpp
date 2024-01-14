@@ -12,7 +12,8 @@
 
 #include "ffmpeg.hpp"
 
-int main(int argc, char* argv[]) {
+#if 0
+static int test_dither(int arg, char* argv) {
   // if (!tvp::check_sixel()) {
   //   std::cout << "Oh noes, your terminal doesn't support Sixel! Use a terminal\n"
   //     << "that does support Sixel (like xterm -ti 430) and/or ask your\n"
@@ -20,7 +21,6 @@ int main(int argc, char* argv[]) {
   //   return 1;
   // }
   
-  #if 0
   if (argc != 2) {
     return 2;
   }
@@ -55,5 +55,9 @@ int main(int argc, char* argv[]) {
     puts("write PPM");
     tvp::pause();
   }
-  #endif
+}
+#endif
+
+int main(int argc, char* argv[]) {
+  
 }
